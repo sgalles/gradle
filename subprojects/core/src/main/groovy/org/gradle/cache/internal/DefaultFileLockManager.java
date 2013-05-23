@@ -259,7 +259,9 @@ public class DefaultFileLockManager implements FileLockManager {
                 this.markIdle();
                 return;
             }
-            beforeClose.run();
+            if (beforeClose != null) {
+                beforeClose.run();
+            }
             if (lockFileAccess == null) {
                 return;
             }
