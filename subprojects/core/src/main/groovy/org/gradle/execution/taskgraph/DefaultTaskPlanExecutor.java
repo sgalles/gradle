@@ -18,6 +18,7 @@ package org.gradle.execution.taskgraph;
 
 import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
+import org.gradle.internal.Factory;
 
 class DefaultTaskPlanExecutor extends AbstractTaskPlanExecutor {
     private final TaskArtifactStateCacheAccess stateCacheAccess;
@@ -30,10 +31,11 @@ class DefaultTaskPlanExecutor extends AbstractTaskPlanExecutor {
     public void process(final TaskExecutionPlan taskExecutionPlan, final TaskExecutionListener taskListener) {
         // Wrap execution of tasks in a single cache lock call, to avoid the number of times the lock is acquired and released.
         // This locking needs to be pushed down closer to the things that need the lock and removed from here.
-        stateCacheAccess.useCache("Execute tasks", new Runnable() {
-            public void run() {
+        stateCacheAccess.longRunningOperation("Execute tasks", new Factory<Object>() {
+            public Object create() {
                 taskWorker(taskExecutionPlan, taskListener).run();
                 taskExecutionPlan.awaitCompletion();
+                return null;
             }
         });
     }

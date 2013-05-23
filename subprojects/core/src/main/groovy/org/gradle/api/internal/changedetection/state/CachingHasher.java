@@ -16,6 +16,7 @@
 package org.gradle.api.internal.changedetection.state;
 
 import org.gradle.cache.PersistentIndexedCache;
+import org.gradle.internal.Factory;
 import org.gradle.messaging.serialize.DataStreamBackedSerializer;
 
 import java.io.*;
@@ -23,25 +24,31 @@ import java.io.*;
 public class CachingHasher implements Hasher {
     private final PersistentIndexedCache<File, FileInfo> cache;
     private final Hasher hasher;
+    private TaskArtifactStateCacheAccess cacheAccess;
     private long timestamp;
 
     public CachingHasher(Hasher hasher, TaskArtifactStateCacheAccess cacheAccess) {
         this.hasher = hasher;
+        this.cacheAccess = cacheAccess;
         cache = cacheAccess.createCache("fileHashes", File.class, FileInfo.class, new FileInfoSerializer());
     }
 
-    public byte[] hash(File file) {
-        FileInfo info = cache.get(file);
+    public byte[] hash(final File file) {
+        return cacheAccess.useCache("hash file", new Factory<byte[]>() {
+            public byte[] create() {
+                FileInfo info = cache.get(file);
 
-        long length = file.length();
-        timestamp = file.lastModified();
-        if (info != null && length == info.length && timestamp == info.timestamp) {
-            return info.hash;
-        }
+                final long length = file.length();
+                timestamp = file.lastModified();
+                if (info != null && length == info.length && timestamp == info.timestamp) {
+                    return info.hash;
+                }
 
-        byte[] hash = hasher.hash(file);
-        cache.put(file, new FileInfo(hash, length, timestamp));
-        return hash;
+                final byte[] hash = hasher.hash(file);
+                cache.put(file, new FileInfo(hash, length, timestamp));
+                return hash;
+            }
+        });
     }
 
     public static class FileInfo implements Serializable {

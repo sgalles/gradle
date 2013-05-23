@@ -59,31 +59,39 @@ public class CacheBackedTaskHistoryRepository implements TaskHistoryRepository {
             }
 
             public void update() {
-                if (currentExecution.inputFilesSnapshotId == null && currentExecution.inputFilesSnapshot != null) {
-                    currentExecution.inputFilesSnapshotId = snapshotRepository.add(currentExecution.inputFilesSnapshot);
-                }
-                if (currentExecution.outputFilesSnapshotId == null && currentExecution.outputFilesSnapshot != null) {
-                    currentExecution.outputFilesSnapshotId = snapshotRepository.add(currentExecution.outputFilesSnapshot);
-                }
-                while (history.configurations.size() > TaskHistory.MAX_HISTORY_ENTRIES) {
-                    LazyTaskExecution execution = history.configurations.remove(history.configurations.size() - 1);
-                    if (execution.inputFilesSnapshotId != null) {
-                        snapshotRepository.remove(execution.inputFilesSnapshotId);
+                cacheAccess.useCache("Update history", new Runnable() {
+                    public void run() {
+                        if (currentExecution.inputFilesSnapshotId == null && currentExecution.inputFilesSnapshot != null) {
+                            currentExecution.inputFilesSnapshotId = snapshotRepository.add(currentExecution.inputFilesSnapshot);
+                        }
+                        if (currentExecution.outputFilesSnapshotId == null && currentExecution.outputFilesSnapshot != null) {
+                            currentExecution.outputFilesSnapshotId = snapshotRepository.add(currentExecution.outputFilesSnapshot);
+                        }
+                        while (history.configurations.size() > TaskHistory.MAX_HISTORY_ENTRIES) {
+                            LazyTaskExecution execution = history.configurations.remove(history.configurations.size() - 1);
+                            if (execution.inputFilesSnapshotId != null) {
+                                snapshotRepository.remove(execution.inputFilesSnapshotId);
+                            }
+                            if (execution.outputFilesSnapshotId != null) {
+                                snapshotRepository.remove(execution.outputFilesSnapshotId);
+                            }
+                        }
+                        taskHistoryCache.put(task.getPath(), history);
                     }
-                    if (execution.outputFilesSnapshotId != null) {
-                        snapshotRepository.remove(execution.outputFilesSnapshotId);
-                    }
-                }
-                taskHistoryCache.put(task.getPath(), history);
+                });
             }
         };
     }
 
-    private TaskHistory loadHistory(TaskInternal task) {
+    private TaskHistory loadHistory(final TaskInternal task) {
         ClassLoader original = serializer.getClassLoader();
         serializer.setClassLoader(task.getClass().getClassLoader());
         try {
-            TaskHistory history = taskHistoryCache.get(task.getPath());
+            TaskHistory history = cacheAccess.useCache("Load history", new Factory<TaskHistory>() {
+                public TaskHistory create() {
+                    return taskHistoryCache.get(task.getPath());
+                }
+            });
             return history == null ? new TaskHistory() : history;
         } finally {
             serializer.setClassLoader(original);
@@ -174,7 +182,11 @@ public class CacheBackedTaskHistoryRepository implements TaskHistoryRepository {
         @Override
         public FileCollectionSnapshot getInputFilesSnapshot() {
             if (inputFilesSnapshot == null) {
-                inputFilesSnapshot = snapshotRepository.get(inputFilesSnapshotId);
+                inputFilesSnapshot = cacheAccess.useCache("fetch file snapshots", new Factory<FileCollectionSnapshot>() {
+                    public FileCollectionSnapshot create() {
+                        return snapshotRepository.get(inputFilesSnapshotId);
+                    }
+                });
             }
             return inputFilesSnapshot;
         }

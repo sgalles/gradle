@@ -22,6 +22,7 @@ import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.internal.Factory;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.concurrent.StoppableExecutor;
@@ -49,8 +50,8 @@ class ParallelTaskPlanExecutor extends AbstractTaskPlanExecutor {
     public void process(final TaskExecutionPlan taskExecutionPlan, final TaskExecutionListener taskListener) {
         // The main thread holds the lock for the task cache. Need to release the lock while executing the tasks.
         // This locking needs to be pushed down closer to the things that need the lock and removed from here.
-        cacheAccess.longRunningOperation("Executing all tasks", new Runnable() {
-            public void run() {
+        cacheAccess.longRunningOperation("Executing all tasks", new Factory<Object>() {
+            public Object create() {
                 DefaultExecutorFactory factory = new DefaultExecutorFactory();
                 try {
                     doProcess(taskExecutionPlan, taskListener, factory);
@@ -58,6 +59,7 @@ class ParallelTaskPlanExecutor extends AbstractTaskPlanExecutor {
                 } finally {
                     factory.stop();
                 }
+                return null;
             }
         });
     }

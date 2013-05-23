@@ -21,6 +21,7 @@ import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.internal.Factory;
 
 import static org.gradle.util.Clock.prettyTime;
 
@@ -61,12 +62,17 @@ abstract class AbstractTaskPlanExecutor implements TaskPlanExecutor {
             final String taskPath = taskInfo.getTask().getPath();
             LOGGER.info(taskPath + " (" + Thread.currentThread() + " - start");
             final long start = System.currentTimeMillis();
-            stateCacheAccess.useCache("Executing " + taskPath, new Runnable() {
-                public void run() {
-                    waitedForCacheMs += System.currentTimeMillis() - start;
-                    processTask(taskInfo);
-                }
-            });
+//            stateCacheAccess.useCache("Executing " + taskPath, new Runnable() {
+//                public void run() {
+//                    waitedForCacheMs += System.currentTimeMillis() - start;
+//                    stateCacheAccess.longRunningOperation("Executing " + taskPath, new Factory<Object>() {
+//                        public Object create() {
+                            processTask(taskInfo);
+//                            return null;
+//                        }
+//                    });
+//                }
+//            });
             busyMs += System.currentTimeMillis() - start;
 
             LOGGER.info(taskPath + " (" + Thread.currentThread() + ") - complete");

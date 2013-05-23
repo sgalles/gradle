@@ -574,6 +574,10 @@ public class DefaultTaskGraphExecuterTest {
             action.run();
         }
 
+        public <T> T longRunningOperation(String operationDisplayName, Factory<T> action) {
+            return action.create();
+        }
+
         public void longRunningOperation(String operationDisplayName, Runnable action) {
             action.run();
         }
