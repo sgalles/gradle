@@ -37,7 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import static org.gradle.cache.internal.FileLockManager.LockMode.Exclusive;
 
 @ThreadSafe
-public class DefaultCacheAccess implements CacheAccess {
+public class DefaultCacheAccess implements CacheAccess, ThreadLock {
     private final String cacheDiplayName;
     private final File lockFile;
     private final FileLockManager lockManager;
@@ -76,19 +76,26 @@ public class DefaultCacheAccess implements CacheAccess {
             if (lockMode == FileLockManager.LockMode.None) {
                 return;
             }
-            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName);
+            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName, beforeLockClosed(), this);
             takeOwnership(String.format("Access %s", cacheDiplayName));
         } finally {
             lock.unlock();
         }
     }
 
+    private Runnable beforeLockClosed() {
+        return new Runnable() {
+            public void run() {
+                for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
+                    cache.onEndWork();
+                }
+            }
+        };
+    }
+
     public void close() {
         lock.lock();
         try {
-            for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
-                cache.close();
-            }
             operationStack.remove();
             lockMode = null;
             owner = null;
@@ -132,7 +139,7 @@ public class DefaultCacheAccess implements CacheAccess {
         }
     }
 
-    private void takeOwnership(String operationDisplayName) {
+    public void takeOwnership(String operationDisplayName) {
         lock.lock();
         try {
             while (owner != null && owner != Thread.currentThread()) {
@@ -149,7 +156,7 @@ public class DefaultCacheAccess implements CacheAccess {
         }
     }
 
-    private void releaseOwnership(String operationDisplayName) {
+    public void releaseOwnership(String operationDisplayName) {
         lock.lock();
         try {
             operationStack.get().popCacheAction(operationDisplayName);
@@ -268,7 +275,7 @@ public class DefaultCacheAccess implements CacheAccess {
             return false;
         }
 
-        fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription());
+        fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), beforeLockClosed(), this);
         for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
             cache.onStartWork(operationStack.get().getDescription());
         }

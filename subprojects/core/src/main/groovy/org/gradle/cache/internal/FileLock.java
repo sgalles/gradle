@@ -17,6 +17,7 @@ package org.gradle.cache.internal;
 
 import java.io.Closeable;
 import java.io.File;
+import java.util.concurrent.locks.Lock;
 
 public interface FileLock extends Closeable, FileAccess {
     /**
