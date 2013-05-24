@@ -16,10 +16,10 @@
 package org.gradle.cache.internal.btree;
 
 import org.gradle.api.UncheckedIOException;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.messaging.serialize.Serializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -40,7 +40,7 @@ import java.util.*;
 // todo - merge adjacent free blocks
 // todo - use more efficient lookup for free block with nearest size
 public class BTreePersistentIndexedCache<K, V> implements PersistentIndexedCache<K, V> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(BTreePersistentIndexedCache.class);
+    private static final Logger LOGGER = Logging.getLogger(BTreePersistentIndexedCache.class);
     private final File cacheFile;
     private final Serializer<K> keySerializer;
     private final Serializer<V> serializer;

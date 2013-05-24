@@ -16,6 +16,9 @@
 package org.gradle.cache.internal;
 
 import net.jcip.annotations.ThreadSafe;
+import org.gradle.api.Action;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 import org.gradle.cache.CacheAccess;
 import org.gradle.messaging.serialize.DefaultSerializer;
 import org.gradle.cache.PersistentIndexedCache;
@@ -38,6 +41,9 @@ import static org.gradle.cache.internal.FileLockManager.LockMode.Exclusive;
 
 @ThreadSafe
 public class DefaultCacheAccess implements CacheAccess, ThreadLock {
+
+    private final static Logger LOG = Logging.getLogger(DefaultCacheAccess.class);
+
     private final String cacheDiplayName;
     private final File lockFile;
     private final FileLockManager lockManager;
@@ -54,6 +60,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             return new CacheOperationStack();
         }
     };
+    private int cacheClosedCount = 0;
 
     public DefaultCacheAccess(String cacheDisplayName, File lockFile, FileLockManager lockManager) {
         this.cacheDiplayName = cacheDisplayName;
@@ -83,11 +90,12 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         }
     }
 
-    private Runnable beforeLockClosed() {
-        return new Runnable() {
-            public void run() {
+    private Action<FileAccess> beforeLockClosed() {
+        return new Action<FileAccess>() {
+            public void execute(FileAccess access) {
+                cacheClosedCount++;
                 for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
-                    cache.onEndWork();
+                    cache.close(access);
                 }
             }
         };
@@ -95,6 +103,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
 
     public void close() {
         lock.lock();
+        LOG.lifecycle("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
         try {
             operationStack.remove();
             lockMode = null;
@@ -288,9 +297,6 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         }
 
         try {
-            for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
-                cache.onEndWork();
-            }
             fileLock.close();
         } finally {
             fileLock = null;
@@ -302,7 +308,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         lock.lock();
         try {
             if (Thread.currentThread() != owner || fileLock == null) {
-                throw new IllegalStateException(String.format("The %s has not been locked.", cacheDiplayName));
+                throw new IllegalStateException(String.format("The %s has not been locked. File lock available: %s", cacheDiplayName, fileLock != null));
             }
         } finally {
             lock.unlock();

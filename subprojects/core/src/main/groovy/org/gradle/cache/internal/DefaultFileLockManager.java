@@ -16,6 +16,7 @@
 package org.gradle.cache.internal;
 
 import com.google.common.collect.MapMaker;
+import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.Factory;
@@ -64,11 +65,11 @@ public class DefaultFileLockManager implements FileLockManager {
         executor.execute(fileLockListener);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, Runnable beforeClose, ThreadLock threadLock) throws LockTimeoutException {
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) throws LockTimeoutException {
         return lock(target, mode, targetDisplayName, "", beforeClose, threadLock);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Runnable beforeClose, ThreadLock threadLock) {
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) {
         if (mode == LockMode.None) {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", mode));
         }
@@ -102,11 +103,19 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         public void run() {
+            try {
+                doRun();
+            } catch (Throwable t) {
+                LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
+            }
+        }
+
+        private void doRun() {
             while (true) {
                 File requestedFileLock = communicator.receive();
                 DefaultFileLock lock = lockedFiles.get(requestedFileLock);
-                if (lock != null) {
-                    LOGGER.lifecycle("Other process requested access to {}, idle: {}", requestedFileLock, lock.isIdle());
+                if (lock != null && !lock.isRequired()) {
+                    LOGGER.lifecycle("Other process requested access to {}, idle: {}. Attempting to take ownership...", requestedFileLock, lock.isIdle());
                     lock.threadLock.takeOwnership("Other process requested access to " + requestedFileLock);
                     try {
                         lock.markRequired();
@@ -135,13 +144,13 @@ public class DefaultFileLockManager implements FileLockManager {
         private RandomAccessFile lockFileAccess;
         private boolean integrityViolated;
         private FileLockListener fileLockListener;
-        private Runnable beforeClose;
+        private Action<FileAccess> beforeClose;
         private ThreadLock threadLock;
         private boolean required;
         private boolean idle;
 
         public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, FileLockListener fileLockListener,
-                               Runnable beforeClose, ThreadLock threadLock) throws Throwable {
+                               Action<FileAccess> beforeClose, ThreadLock threadLock) throws Throwable {
             this.fileLockListener = fileLockListener;
             this.beforeClose = beforeClose;
             this.threadLock = threadLock;
@@ -255,12 +264,15 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         public void close() {
-            if (lockedFiles.containsKey(target) && !lockedFiles.get(target).isRequired()) {
-                this.markIdle();
-                return;
+            if (lockedFiles.containsKey(target)) {
+                assert lockedFiles.get(target) == this;
+                if(!this.isRequired()) {
+                    this.markIdle();
+                    return;
+                }
             }
             if (beforeClose != null) {
-                beforeClose.run();
+                beforeClose.execute(this);
             }
             if (lockFileAccess == null) {
                 return;

@@ -15,6 +15,8 @@
  */
 package org.gradle.cache.internal;
 
+import org.gradle.api.Action;
+
 import java.io.File;
 
 public interface FileLockManager {
@@ -27,7 +29,7 @@ public interface FileLockManager {
      * @param targetDisplayName A display name for the target file. This is used in log and error messages.
      * @param beforeClose
      */
-    FileLock lock(File target, LockMode mode, String targetDisplayName, Runnable beforeClose, ThreadLock threadLock) throws LockTimeoutException;
+    FileLock lock(File target, LockMode mode, String targetDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) throws LockTimeoutException;
 
     /**
      * Creates a locks for the given file with the given mode. Acquires a lock with the given mode, which is held until the lock is
@@ -37,8 +39,9 @@ public interface FileLockManager {
      * @param mode The lock mode.
      * @param targetDisplayName A display name for the target file. This is used in log and error messages.
      * @param operationDisplayName A display name for the operation being performed on the target file. This is used in log and error messages.
+     * @param beforeClose
      */
-    FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Runnable beforeClose, ThreadLock threadLock) throws LockTimeoutException;
+    FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) throws LockTimeoutException;
 
     enum LockMode {
         /**
