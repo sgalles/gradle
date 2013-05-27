@@ -15,22 +15,17 @@
  */
 package org.gradle.cache.internal;
 
-import com.google.common.collect.MapMaker;
 import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
-import org.gradle.internal.concurrent.DefaultExecutorFactory;
-import org.gradle.internal.concurrent.StoppableExecutor;
 import org.gradle.util.GFileUtils;
 
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.Map;
-import java.util.concurrent.locks.Lock;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
@@ -48,10 +43,8 @@ public class DefaultFileLockManager implements FileLockManager {
     private static final int INFORMATION_REGION_POS = STATE_REGION_POS + STATE_REGION_SIZE;
     public static final int INFORMATION_REGION_SIZE = 2048;
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
-    private final Map<File, DefaultFileLock> lockedFiles = new MapMaker().makeMap();
     private final ProcessMetaDataProvider metaDataProvider;
     private final int lockTimeoutMs;
-    private FileLockListener fileLockListener;
 
     public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider) {
         this(metaDataProvider, DEFAULT_LOCK_TIMEOUT);
@@ -60,77 +53,22 @@ public class DefaultFileLockManager implements FileLockManager {
     public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, int lockTimeoutMs) {
         this.metaDataProvider = metaDataProvider;
         this.lockTimeoutMs = lockTimeoutMs;
-        fileLockListener = new FileLockListener(lockedFiles);
-        StoppableExecutor executor = new DefaultExecutorFactory().create("Listen to multi-process cache access requests");
-        executor.execute(fileLockListener);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) throws LockTimeoutException {
-        return lock(target, mode, targetDisplayName, "", beforeClose, threadLock);
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<FileAccess> beforeClose, int port) throws LockTimeoutException {
+        return lock(target, mode, targetDisplayName, "", beforeClose, port);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<FileAccess> beforeClose, ThreadLock threadLock) {
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<FileAccess> beforeClose, int port) {
         if (mode == LockMode.None) {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", mode));
         }
         File canonicalTarget = GFileUtils.canonicalise(target);
 
         try {
-            DefaultFileLock fileLock = lockedFiles.get(canonicalTarget);
-            if (fileLock != null) {
-                fileLock.markBusy();
-                return fileLock;
-            }
-
-            DefaultFileLock lock = new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, fileLockListener, beforeClose, threadLock);
-            if (targetDisplayName.startsWith("task artifact state cache")) {
-                lockedFiles.put(canonicalTarget, lock);
-            }
-            return lock;
+            return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, beforeClose, port);
         } catch (Throwable t) {
             throw UncheckedException.throwAsUncheckedException(t);
-        }
-    }
-
-    private static class FileLockListener implements Runnable {
-        private FileLockCommunicator communicator = new FileLockCommunicator();
-        private final Map<File, DefaultFileLock> lockedFiles;
-        private Lock threadLock;
-
-        private FileLockListener(Map<File, DefaultFileLock> lockedFiles) {
-            this.lockedFiles = lockedFiles;
-            communicator.start();
-        }
-
-        public void run() {
-            try {
-                doRun();
-            } catch (Throwable t) {
-                LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
-            }
-        }
-
-        private void doRun() {
-            while (true) {
-                File requestedFileLock = communicator.receive();
-                DefaultFileLock lock = lockedFiles.get(requestedFileLock);
-                if (lock != null && !lock.isRequired()) {
-                    LOGGER.lifecycle("Other process requested access to {}, idle: {}. Attempting to take ownership...", requestedFileLock, lock.isIdle());
-                    lock.threadLock.takeOwnership("Other process requested access to " + requestedFileLock);
-                    try {
-                        lock.markRequired();
-                        if (lock.isIdle()) {
-                            lockedFiles.remove(requestedFileLock).close();
-                        }
-                    } finally {
-                        lock.threadLock.releaseOwnership("Other process requested access to " + requestedFileLock);
-                    }
-                }
-            }
-        }
-
-        public int getPort() {
-            return communicator.getPort();
         }
     }
 
@@ -143,17 +81,15 @@ public class DefaultFileLockManager implements FileLockManager {
         private java.nio.channels.FileLock lock;
         private RandomAccessFile lockFileAccess;
         private boolean integrityViolated;
-        private FileLockListener fileLockListener;
         private Action<FileAccess> beforeClose;
-        private ThreadLock threadLock;
-        private boolean required;
-        private boolean idle;
+        private int port;
+        private boolean contended;
+        private boolean busy;
 
-        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, FileLockListener fileLockListener,
-                               Action<FileAccess> beforeClose, ThreadLock threadLock) throws Throwable {
-            this.fileLockListener = fileLockListener;
+        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName,
+                               Action<FileAccess> beforeClose, int port) throws Throwable {
             this.beforeClose = beforeClose;
-            this.threadLock = threadLock;
+            this.port = port;
             if (mode == LockMode.None) {
                 throw new UnsupportedOperationException("Locking mode None is not supported.");
             }
@@ -264,13 +200,6 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         public void close() {
-            if (lockedFiles.containsKey(target)) {
-                assert lockedFiles.get(target) == this;
-                if(!this.isRequired()) {
-                    this.markIdle();
-                    return;
-                }
-            }
             if (beforeClose != null) {
                 beforeClose.execute(this);
             }
@@ -293,12 +222,7 @@ public class DefaultFileLockManager implements FileLockManager {
             } finally {
                 lock = null;
                 lockFileAccess = null;
-                lockedFiles.remove(target);
             }
-        }
-
-        private void markIdle() {
-            this.idle = true;
         }
 
         public LockMode getMode() {
@@ -344,7 +268,7 @@ public class DefaultFileLockManager implements FileLockManager {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
-                        lockFileAccess.writeUTF(trimIfNecessary(fileLockListener.getPort() + ""));
+                        lockFileAccess.writeUTF(trimIfNecessary(port + ""));
                         lockFileAccess.setLength(lockFileAccess.getFilePointer());
                     } finally {
                         informationRegionLock.release();
@@ -430,20 +354,20 @@ public class DefaultFileLockManager implements FileLockManager {
             return null;
         }
 
-        public void markRequired() {
-            this.required = true;
+        public void setContended(boolean contended) {
+            this.contended = true;
         }
 
-        public boolean isRequired() {
-            return required;
+        public boolean isContended() {
+            return contended;
         }
 
-        public boolean isIdle() {
-            return idle;
+        public void setBusy(boolean busy) {
+            this.busy = busy;
         }
 
-        public void markBusy() {
-            idle = false;
+        public boolean isBusy() {
+            return busy;
         }
     }
 }
