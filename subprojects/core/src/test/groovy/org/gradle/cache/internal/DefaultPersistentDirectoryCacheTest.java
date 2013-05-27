@@ -47,7 +47,7 @@ public class DefaultPersistentDirectoryCacheTest {
     public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private final JUnit4Mockery context = new JUnit4GroovyMockery();
     private final ProcessMetaDataProvider metaDataProvider = context.mock(ProcessMetaDataProvider.class);
-    private final FileLockManager lockManager = new DefaultFileLockManager(metaDataProvider);
+    private final FileLockManager lockManager = new DefaultFileLockManager(metaDataProvider, false);
     private final Action<PersistentCache> action = context.mock(Action.class);
     private final CacheValidator validator = context.mock(CacheValidator.class);
     private final Map<String, String> properties = GUtil.map("prop", "value", "prop2", "other-value");

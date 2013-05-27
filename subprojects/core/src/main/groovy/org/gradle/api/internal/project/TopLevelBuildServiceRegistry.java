@@ -39,8 +39,7 @@ import org.gradle.api.internal.project.taskfactory.ITaskFactory;
 import org.gradle.api.internal.project.taskfactory.TaskFactory;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.CacheValidator;
-import org.gradle.cache.internal.CacheFactory;
-import org.gradle.cache.internal.DefaultCacheRepository;
+import org.gradle.cache.internal.*;
 import org.gradle.configuration.*;
 import org.gradle.groovy.scripts.DefaultScriptCompilerFactory;
 import org.gradle.groovy.scripts.ScriptCompilerFactory;
@@ -53,6 +52,7 @@ import org.gradle.internal.TrueTimeProvider;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.id.LongIdGenerator;
+import org.gradle.internal.nativeplatform.*;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceLocator;
@@ -129,7 +129,8 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     }
 
     protected CacheFactory createCacheFactory() {
-        return getFactory(CacheFactory.class).create();
+//        return getFactory(CacheFactory.class).create();
+        return new DefaultCacheFactory(get(FileLockManager.class)).create();
     }
 
     protected CacheRepository createCacheRepository() {
@@ -271,4 +272,17 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
         ServiceLocator serviceLocator = new ServiceLocator(coreImplClassLoader);
         return serviceLocator.getFactory(TopLevelDependencyManagementServices.class).newInstance();
     }
+
+    //    protected Factory<CacheFactory> createCacheFactory() {
+//        return new DefaultCacheFactory(get(FileLockManager.class));
+//    }
+
+//    protected Factory<DefaultCacheFactory> createDefaultCacheFactory() {
+//        return new DefaultCacheFactory(get(FileLockManager.class));
+//    }
+
+    protected FileLockManager createFileLockManager() {
+        return new DefaultFileLockManager(new DefaultProcessMetaDataProvider(get(ProcessEnvironment.class)), true);
+    }
+
 }

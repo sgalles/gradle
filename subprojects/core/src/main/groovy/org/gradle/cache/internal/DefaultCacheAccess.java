@@ -17,9 +17,11 @@ package org.gradle.cache.internal;
 
 import com.google.common.collect.MapMaker;
 import net.jcip.annotations.ThreadSafe;
+import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.cache.CacheAccess;
+import org.gradle.internal.Stoppable;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.StoppableExecutor;
 import org.gradle.messaging.serialize.DefaultSerializer;
@@ -37,6 +39,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.gradle.cache.internal.FileLockManager.LockMode.Exclusive;
+import static org.gradle.cache.internal.FileLockManager.LockMode.Shared;
 
 @ThreadSafe
 public class DefaultCacheAccess implements CacheAccess, ThreadLock {
@@ -50,7 +53,6 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
     private final Set<MultiProcessSafePersistentIndexedCache<?, ?>> caches = new HashSet<MultiProcessSafePersistentIndexedCache<?, ?>>();
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
-    private final DefaultCacheAccess.FileLockListener fileLockListener;
     private Thread owner;
     private FileLockManager.LockMode lockMode;
     private FileLock fileLock;
@@ -67,15 +69,11 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         this.cacheDiplayName = cacheDisplayName;
         this.lockFile = lockFile;
         this.lockManager = lockManager;
-        StoppableExecutor executor = new DefaultExecutorFactory().create("Listen to multi-process cache access requests");
-        fileLockListener = new FileLockListener();
-        executor.execute(fileLockListener);
     }
 
     /**
-     * Opens this cache access with the given lock mode. Calling this with {@link org.gradle.cache.internal.FileLockManager.LockMode#Exclusive} will
-     * lock the cache for exclusive access from all other threads (including those in this process and all other processes), until
-     * {@link #close()} is called.
+     * Opens this cache access with the given lock mode. Calling this with {@link org.gradle.cache.internal.FileLockManager.LockMode#Exclusive} will lock the cache for exclusive access from all other
+     * threads (including those in this process and all other processes), until {@link #close()} is called.
      */
     public void open(FileLockManager.LockMode lockMode) {
         lock.lock();
@@ -90,7 +88,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             if (lockedFiles.containsKey(lockFile)) {
                 throw new IllegalStateException("File lock " + lockFile + " is already open.");
             }
-            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName, fileLockListener.getPort());
+            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName, whenContended());
             if (lockMode.equals(FileLockManager.LockMode.Exclusive)) {
                 lockedFiles.put(lockFile, fileLock);
             }
@@ -111,7 +109,6 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
 
     public void close() {
         lock.lock();
-        fileLockListener.stop();
         try {
             operationStack.remove();
             lockMode = null;
@@ -124,7 +121,9 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
                 }
             }
         } finally {
-            LOG.lifecycle("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
+            if (cacheClosedCount != 1) {
+                LOG.lifecycle("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
+            }
             lock.unlock();
         }
     }
@@ -303,7 +302,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             }
             fileLock = cachedLock;
         } else {
-            fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), fileLockListener.getPort());
+            fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), whenContended());
             lockedFiles.put(lockFile, fileLock);
         }
         fileLock.setBusy(true);
@@ -322,7 +321,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             throw new IllegalStateException("The lock should be busy!");
         }
         try {
-            if (fileLock.isContended()) {
+            if (fileLock.isContended() || fileLock.getMode() == Shared) {
                 closeFileLock(fileLock);
             } else {
                 fileLock.setBusy(false);
@@ -417,36 +416,21 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         }
     }
 
-    class FileLockListener implements Runnable {
-        private FileLockCommunicator communicator = new FileLockCommunicator();
-        private boolean stopped;
-
-        private FileLockListener() {
-            communicator.start();
-        }
-
-        public void run() {
-            try {
-                doRun();
-            } catch (Throwable t) {
-                LOG.lifecycle("Problems handling incoming cache access requests.", t);
-            }
-        }
-
-        private void doRun() {
-            while (!stopped) {
-                File requestedFileLock = communicator.receive();
-                if (stopped) {
-                    return;
-                }
+    Action<File> whenContended() {
+        return new Action<File>() {
+            public void execute(File lockTarget) {
                 takeOwnership("Other process requested access to " + cacheDiplayName);
                 try {
-                    FileLock lock = lockedFiles.get(requestedFileLock);
+                    FileLock lock = lockedFiles.get(lockTarget);
+                    if (lock == null) {
+                        //the lock may have been closed before we entered the thread lock via takeOwnership()
+                        return;
+                    }
                     if (!lock.isContended()) {
-                        LOG.lifecycle("Other process requested access to {}, busy: {}.", requestedFileLock, lock.isBusy());
+                        LOG.lifecycle("Other process requested access to {}, busy: {}.", lockTarget, lock.isBusy());
                         lock.setContended(true);
                         if (!lock.isBusy()) {
-                            lockedFiles.remove(requestedFileLock);
+                            lockedFiles.remove(lockTarget);
                             closeFileLock(lock);
                         }
                     }
@@ -454,15 +438,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
                     releaseOwnership("Other process requested access to " + cacheDiplayName);
                 }
             }
-        }
-
-        public int getPort() {
-            return communicator.getPort();
-        }
-
-        public void stop() {
-            stopped = true;
-            communicator.stop();
-        }
+        };
     }
+
 }

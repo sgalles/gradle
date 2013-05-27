@@ -15,17 +15,24 @@
  */
 package org.gradle.cache.internal;
 
+import com.google.common.collect.MapMaker;
 import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.Factory;
+import org.gradle.internal.Stoppable;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.concurrent.DefaultExecutorFactory;
+import org.gradle.internal.concurrent.StoppableExecutor;
 import org.gradle.util.GFileUtils;
 
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
@@ -33,7 +40,7 @@ import java.io.RandomAccessFile;
  * <ul> <li>State region: 1 byte version field, 1 byte clean flag.</li> <li>Owner information region: 1 byte version field, utf-8 encoded owner process id, utf-8 encoded owner operation display
  * name.</li> </ul>
  */
-public class DefaultFileLockManager implements FileLockManager {
+public class DefaultFileLockManager implements FileLockManager, Stoppable {
     private static final Logger LOGGER = Logging.getLogger(DefaultFileLockManager.class);
     private static final int DEFAULT_LOCK_TIMEOUT = 60000;
     private static final byte STATE_REGION_PROTOCOL = 1;
@@ -45,30 +52,97 @@ public class DefaultFileLockManager implements FileLockManager {
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
     private final ProcessMetaDataProvider metaDataProvider;
     private final int lockTimeoutMs;
+    private boolean manageContention;
+    private final FileLockListener fileLockListener = new FileLockListener();
+    private final Map<File, Action<File>> contendedActions = new MapMaker().makeMap();
+    private StoppableExecutor executor;
 
-    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider) {
-        this(metaDataProvider, DEFAULT_LOCK_TIMEOUT);
+    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, boolean manageContention) {
+        this(metaDataProvider, DEFAULT_LOCK_TIMEOUT, manageContention);
     }
 
-    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, int lockTimeoutMs) {
+    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, int lockTimeoutMs, boolean manageContention) {
         this.metaDataProvider = metaDataProvider;
         this.lockTimeoutMs = lockTimeoutMs;
+        this.manageContention = manageContention;
+        if (manageContention) {
+            executor = new DefaultExecutorFactory().create("Listen to multi-process cache access requests");
+            executor.execute(fileLockListener);
+        }
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, int port) throws LockTimeoutException {
-        return lock(target, mode, targetDisplayName, "", port);
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<File> whenContended) throws LockTimeoutException {
+        return lock(target, mode, targetDisplayName, "", whenContended);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, int port) {
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<File> whenContended) {
         if (mode == LockMode.None) {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", mode));
         }
         File canonicalTarget = GFileUtils.canonicalise(target);
+        if (whenContended != null) {
+            contendedActions.put(target, whenContended);
+        }
 
         try {
-            return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, port);
+            return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName);
         } catch (Throwable t) {
             throw UncheckedException.throwAsUncheckedException(t);
+        }
+    }
+
+    public void stop() {
+        for (File file : contendedActions.keySet()) {
+            contendedActions.get(file).execute(file);
+        }
+        fileLockListener.stop();
+        executor.stop();
+    }
+
+    class FileLockListener implements Runnable {
+        private FileLockCommunicator communicator = new FileLockCommunicator();
+        private boolean stopped;
+        private final Object lock = new Object();
+
+        private FileLockListener() {
+            communicator.start();
+        }
+
+        public void run() {
+            try {
+                LOGGER.lifecycle("Starting file lock listener thread.");
+                doRun();
+            } catch (Throwable t) {
+                LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
+            } finally {
+                LOGGER.lifecycle("File lock listener thread completed.");
+            }
+        }
+
+        private void doRun() {
+            while (!stopped) {
+                File requestedFileLock = communicator.receive();
+                synchronized (lock) {
+                    if (stopped) {
+                        return;
+                    }
+                    Action<File> action = contendedActions.get(requestedFileLock);
+                    if (action != null) {
+                        action.execute(requestedFileLock);
+                    }
+                }
+            }
+        }
+
+        public int getPort() {
+            return communicator.getPort();
+        }
+
+        public void stop() {
+            synchronized (lock) {
+                stopped = true;
+                communicator.stop();
+            }
         }
     }
 
@@ -81,12 +155,10 @@ public class DefaultFileLockManager implements FileLockManager {
         private java.nio.channels.FileLock lock;
         private RandomAccessFile lockFileAccess;
         private boolean integrityViolated;
-        private int port;
         private boolean contended;
         private boolean busy;
 
-        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, int port) throws Throwable {
-            this.port = port;
+        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName) throws Throwable {
             if (mode == LockMode.None) {
                 throw new UnsupportedOperationException("Locking mode None is not supported.");
             }
@@ -211,6 +283,7 @@ public class DefaultFileLockManager implements FileLockManager {
                 } finally {
                     lockFileAccess.close();
                 }
+                contendedActions.remove(target);
             } catch (IOException e) {
                 LOGGER.warn("Error releasing lock on {}: {}", displayName, e);
             } finally {
@@ -262,7 +335,7 @@ public class DefaultFileLockManager implements FileLockManager {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
-                        lockFileAccess.writeUTF(trimIfNecessary(port + ""));
+                        lockFileAccess.writeUTF(trimIfNecessary(manageContention? fileLockListener.getPort() + "" : "unknown"));
                         lockFileAccess.setLength(lockFileAccess.getFilePointer());
                     } finally {
                         informationRegionLock.release();
@@ -317,7 +390,7 @@ public class DefaultFileLockManager implements FileLockManager {
                     try {
                         String ownerPort = readInformationRegion(timeout);
                         LOGGER.lifecycle("Will attempt to ping owner at {}", ownerPort);
-                        if (!"unknown".equals(ownerPort)) {
+                        if (!"unknown".equals(ownerPort) && !"-1".equals(ownerPort)) {
                             FileLockCommunicator.pingOwner(ownerPort, target);
                         }
                     } catch (Exception e) {
