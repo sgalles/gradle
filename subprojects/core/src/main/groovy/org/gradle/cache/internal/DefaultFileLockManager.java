@@ -30,9 +30,7 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
@@ -46,9 +44,9 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
     private static final byte STATE_REGION_PROTOCOL = 1;
     private static final int STATE_REGION_SIZE = 2;
     private static final int STATE_REGION_POS = 0;
-    private static final byte INFORMATION_REGION_PROTOCOL = 2;
+    private static final byte INFORMATION_REGION_PROTOCOL = 3;
     private static final int INFORMATION_REGION_POS = STATE_REGION_POS + STATE_REGION_SIZE;
-    public static final int INFORMATION_REGION_SIZE = 2048;
+    public static final int INFORMATION_REGION_SIZE = 2052;
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
     private final ProcessMetaDataProvider metaDataProvider;
     private final int lockTimeoutMs;
@@ -144,6 +142,12 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                 communicator.stop();
             }
         }
+    }
+
+    private class OwnerInfo {
+        int port;
+        String pid;
+        String operation;
     }
 
     private class DefaultFileLock extends AbstractFileAccess implements FileLock {
@@ -303,9 +307,9 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
             // Lock the state region, with the requested mode
             java.nio.channels.FileLock stateRegionLock = lockStateRegion(lockMode, timeout);
             if (stateRegionLock == null) {
-                String ownerAddress = readInformationRegion(timeout);
-                throw new LockTimeoutException(String.format("Timeout waiting to lock %s. It is currently in use by another Gradle instance.%nOwner address: %s%nOur PID: %s%nOur operation: %s%nLock file: %s",
-                        displayName, ownerAddress, metaDataProvider.getProcessIdentifier(), operationDisplayName, lockFile));
+                OwnerInfo ownerInfo = readInformationRegion(timeout);
+                throw new LockTimeoutException(String.format("Timeout waiting to lock %s. It is currently in use by another Gradle instance.%nOwner PID: %s%nOur PID: %s%nOwner Operation: %s%nOur operation: %s%nLock file: %s",
+                        displayName, ownerInfo.pid, metaDataProvider.getProcessIdentifier(), ownerInfo.operation, operationDisplayName, lockFile));
             }
 
             try {
@@ -334,6 +338,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                     try {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
+                        lockFileAccess.writeInt(fileLockListener.getPort());
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
                         lockFileAccess.writeUTF(trimIfNecessary(manageContention? fileLockListener.getPort() + "" : "unknown"));
                         lockFileAccess.setLength(lockFileAccess.getFilePointer());
@@ -350,10 +355,12 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
             return stateRegionLock;
         }
 
-        private String readInformationRegion(long timeout) throws IOException, InterruptedException {
+        private OwnerInfo readInformationRegion(long timeout) throws IOException, InterruptedException {
             // Can't acquire lock, get details of owner to include in the error message
-            String ownerPid = "unknown";
-            String ownerAddress = "unknown";
+            OwnerInfo out = new OwnerInfo();
+            out.pid = "unknown";
+            out.operation = "unknown";
+            out.port = -1;
             java.nio.channels.FileLock informationRegionLock = lockInformationRegion(LockMode.Shared, timeout);
             if (informationRegionLock == null) {
                 LOGGER.debug("Could not lock information region for {}. Ignoring.", displayName);
@@ -366,14 +373,15 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                         if (lockFileAccess.readByte() != INFORMATION_REGION_PROTOCOL) {
                             throw new IllegalStateException(String.format("Unexpected lock protocol found in lock file '%s' for %s.", lockFile, displayName));
                         }
-                        ownerPid = lockFileAccess.readUTF();
-                        ownerAddress = lockFileAccess.readUTF();
+                        out.port = lockFileAccess.readInt();
+                        out.pid = lockFileAccess.readUTF();
+                        out.operation = lockFileAccess.readUTF();
                     }
                 } finally {
                     informationRegionLock.release();
                 }
             }
-            return ownerAddress;
+            return out;
         }
 
         private String trimIfNecessary(String inputString) {
@@ -388,10 +396,12 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
             return lockRegion(lockMode, timeout, STATE_REGION_POS, STATE_REGION_SIZE, new Runnable() {
                 public void run() {
                     try {
-                        String ownerPort = readInformationRegion(timeout);
-                        LOGGER.lifecycle("Will attempt to ping owner at {}", ownerPort);
-                        if (!"unknown".equals(ownerPort) && !"-1".equals(ownerPort)) {
-                            FileLockCommunicator.pingOwner(ownerPort, target);
+                        OwnerInfo ownerInfo = readInformationRegion(timeout);
+                        if (ownerInfo.port != -1) {
+                            LOGGER.debug("The file lock is held by by a different Gradle process. Will attempt to ping owner at port {}", ownerInfo.port);
+                            FileLockCommunicator.pingOwner(ownerInfo.port, target);
+                        } else {
+                            LOGGER.debug("The file lock is held by by a different Gradle process. I was unable to read the port the owner listens for lock access requests.");
                         }
                     } catch (Exception e) {
                         throw new RuntimeException(e);

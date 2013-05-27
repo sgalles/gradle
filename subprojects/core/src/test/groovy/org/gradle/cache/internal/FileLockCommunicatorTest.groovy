@@ -26,7 +26,7 @@ class FileLockCommunicatorTest extends ConcurrentSpecification {
         }
 
         when:
-        FileLockCommunicator.pingOwner("" + communicator.getPort(), actualFile)
+        FileLockCommunicator.pingOwner(communicator.getPort(), actualFile)
 
         then:
         poll {
