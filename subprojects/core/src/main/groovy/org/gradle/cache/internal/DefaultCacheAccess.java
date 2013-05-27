@@ -17,7 +17,6 @@ package org.gradle.cache.internal;
 
 import com.google.common.collect.MapMaker;
 import net.jcip.annotations.ThreadSafe;
-import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.cache.CacheAccess;
@@ -91,7 +90,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             if (lockedFiles.containsKey(lockFile)) {
                 throw new IllegalStateException("File lock " + lockFile + " is already open.");
             }
-            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName, beforeLockClosed(), fileLockListener.getPort());
+            fileLock = lockManager.lock(lockFile, lockMode, cacheDiplayName, fileLockListener.getPort());
             if (lockMode.equals(FileLockManager.LockMode.Exclusive)) {
                 lockedFiles.put(lockFile, fileLock);
             }
@@ -102,15 +101,12 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         }
     }
 
-    private Action<FileAccess> beforeLockClosed() {
-        return new Action<FileAccess>() {
-            public void execute(FileAccess access) {
-                cacheClosedCount++;
-                for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
-                    cache.close(access);
-                }
-            }
-        };
+    private void closeFileLock(FileLock fileLock) {
+        cacheClosedCount++;
+        for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
+            cache.close(fileLock);
+        }
+        fileLock.close();
     }
 
     public void close() {
@@ -120,20 +116,16 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             operationStack.remove();
             lockMode = null;
             owner = null;
-            closeFileLock();
+            if (fileLock != null) {
+                try {
+                    closeFileLock(fileLock);
+                } finally {
+                    fileLock = null;
+                }
+            }
         } finally {
             LOG.lifecycle("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
             lock.unlock();
-        }
-    }
-
-    private void closeFileLock() {
-        if (fileLock != null) {
-            try {
-                fileLock.close();
-            } finally {
-                fileLock = null;
-            }
         }
     }
 
@@ -311,7 +303,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             }
             fileLock = cachedLock;
         } else {
-            fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), beforeLockClosed(), fileLockListener.getPort());
+            fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), fileLockListener.getPort());
             lockedFiles.put(lockFile, fileLock);
         }
         fileLock.setBusy(true);
@@ -331,7 +323,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
         }
         try {
             if (fileLock.isContended()) {
-                fileLock.close();
+                closeFileLock(fileLock);
             } else {
                 fileLock.setBusy(false);
             }
@@ -455,7 +447,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
                         lock.setContended(true);
                         if (!lock.isBusy()) {
                             lockedFiles.remove(requestedFileLock);
-                            lock.close();
+                            closeFileLock(lock);
                         }
                     }
                 } finally {

@@ -55,18 +55,18 @@ public class DefaultFileLockManager implements FileLockManager {
         this.lockTimeoutMs = lockTimeoutMs;
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<FileAccess> beforeClose, int port) throws LockTimeoutException {
-        return lock(target, mode, targetDisplayName, "", beforeClose, port);
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, int port) throws LockTimeoutException {
+        return lock(target, mode, targetDisplayName, "", port);
     }
 
-    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, Action<FileAccess> beforeClose, int port) {
+    public FileLock lock(File target, LockMode mode, String targetDisplayName, String operationDisplayName, int port) {
         if (mode == LockMode.None) {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", mode));
         }
         File canonicalTarget = GFileUtils.canonicalise(target);
 
         try {
-            return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, beforeClose, port);
+            return new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, port);
         } catch (Throwable t) {
             throw UncheckedException.throwAsUncheckedException(t);
         }
@@ -81,14 +81,11 @@ public class DefaultFileLockManager implements FileLockManager {
         private java.nio.channels.FileLock lock;
         private RandomAccessFile lockFileAccess;
         private boolean integrityViolated;
-        private Action<FileAccess> beforeClose;
         private int port;
         private boolean contended;
         private boolean busy;
 
-        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName,
-                               Action<FileAccess> beforeClose, int port) throws Throwable {
-            this.beforeClose = beforeClose;
+        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, int port) throws Throwable {
             this.port = port;
             if (mode == LockMode.None) {
                 throw new UnsupportedOperationException("Locking mode None is not supported.");
@@ -200,9 +197,6 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         public void close() {
-            if (beforeClose != null) {
-                beforeClose.execute(this);
-            }
             if (lockFileAccess == null) {
                 return;
             }
