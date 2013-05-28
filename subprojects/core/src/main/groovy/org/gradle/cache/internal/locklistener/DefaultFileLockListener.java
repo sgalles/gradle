@@ -4,6 +4,8 @@ import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.cache.internal.FileLockCommunicator;
+import org.gradle.internal.concurrent.DefaultExecutorFactory;
+import org.gradle.internal.concurrent.StoppableExecutor;
 
 import java.io.File;
 import java.util.HashMap;
@@ -19,70 +21,54 @@ public class DefaultFileLockListener implements FileLockListener {
     private final Lock lock = new ReentrantLock();
     private final Map<File, Action<File>> contendedActions = new HashMap();
     private FileLockCommunicator communicator = new FileLockCommunicator();
-    private boolean stopped;
 
-    private Runnable listener;
-
-    private Runnable newListener() {
-        return new Runnable() {
-            public void run() {
-                try {
-                    LOGGER.lifecycle("Starting file lock listener thread.");
-                    doRun();
-                } catch (Throwable t) {
-                    LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
-                } finally {
-                    LOGGER.lifecycle("File lock listener thread completed.");
-                }
+    private Runnable listener() { return new Runnable() {
+        public void run() {
+            try {
+                LOGGER.lifecycle("Starting file lock listener thread.");
+                doRun();
+                assertState();
+            } catch (Throwable t) {
+                LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
+            } finally {
+                LOGGER.lifecycle("File lock listener thread completed.");
             }
-
-            private void doRun() {
-                while(!stopped) {
-                    File requestedFileLock = communicator.receive();
-                    lock.lock();
-                    try {
-                        if (stopped || contendedActions.isEmpty()) {
-                            return;
-                        }
-                        Action<File> action = contendedActions.get(requestedFileLock);
-                        if (action != null) {
-                            action.execute(requestedFileLock);
-                        }
-                    } finally {
-                        lock.unlock();
-                    }
-                }
-            }
-        };
-    }
-
-    public int getPort() {
-        return communicator.getPort();
-    }
-
-    public void stop() {
-        lock.lock();
-        try {
-            stopped = true;
-            contendedActions.clear();
-            communicator.stop();
-        } finally {
-            lock.unlock();
         }
-    }
+
+        private void assertState() {
+            if (communicator.getPort() != -1) {
+                throw new IllegalStateException("Socket not closed!");
+            }
+        }
+
+        private void doRun() {
+            File requestedFileLock;
+            while((requestedFileLock = communicator.receive()) != null) {
+                lock.lock();
+                try {
+                    Action<File> action = contendedActions.get(requestedFileLock);
+                    if (action != null) {
+                        action.execute(requestedFileLock);
+                    }
+                } finally {
+                    lock.unlock();
+                }
+            }
+        }
+    };}
+
+    private StoppableExecutor executor;
 
     public void lockCreated(File target, Action<File> whenContended) {
         lock.lock();
         try {
-            if (stopped) {
-                throw new IllegalStateException("The listener was already stopped!");
+            if (contendedActions.isEmpty()) {
+                LOGGER.lifecycle("Starting communicator because first cache opens {}", target);
+                communicator.start();
+                executor = new DefaultExecutorFactory().create("Listen for file lock access requests from other processes");
+                executor.execute(listener());
             }
             contendedActions.put(target, whenContended);
-            if (listener == null) {
-                listener = newListener();
-                communicator.start();
-                new Thread(listener).start();
-            }
         } finally {
             lock.unlock();
         }
@@ -91,16 +77,24 @@ public class DefaultFileLockListener implements FileLockListener {
     public void lockClosed(File target) {
         lock.lock();
         try {
-            if (stopped) {
-                throw new IllegalStateException("The listener was already stopped!");
-            }
-            if (listener == null) {
-                throw new IllegalStateException("Lock creation event was not received first!");
-            }
             contendedActions.remove(target);
             if (contendedActions.isEmpty()) {
+                LOGGER.lifecycle("Stopping receiver, last cache is being closed {}", target);
                 communicator.stop();
+                executor.stop();
             }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int reservePort() {
+        lock.lock();
+        try {
+            if (!communicator.wasStarted()) {
+                communicator.start();
+            }
+            return communicator.getPort();
         } finally {
             lock.unlock();
         }

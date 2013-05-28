@@ -39,6 +39,9 @@ public class FileLockCommunicator {
 
     public void stop() {
         stopped = true;
+        if (socket == null) {
+            throw new IllegalStateException("The communicator was not started.");
+        }
         socket.close();
     }
 
@@ -69,5 +72,9 @@ public class FileLockCommunicator {
         } catch (SocketException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public boolean wasStarted() {
+        return socket != null;
     }
 }

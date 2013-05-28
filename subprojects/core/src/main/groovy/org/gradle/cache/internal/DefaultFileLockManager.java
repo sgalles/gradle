@@ -20,7 +20,6 @@ import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.cache.internal.locklistener.FileLockListener;
 import org.gradle.internal.Factory;
-import org.gradle.internal.Stoppable;
 import org.gradle.internal.UncheckedException;
 import org.gradle.util.GFileUtils;
 
@@ -35,7 +34,7 @@ import java.io.RandomAccessFile;
  * <ul> <li>State region: 1 byte version field, 1 byte clean flag.</li> <li>Owner information region: 1 byte version field, utf-8 encoded owner process id, utf-8 encoded owner operation display
  * name.</li> </ul>
  */
-public class DefaultFileLockManager implements FileLockManager, Stoppable {
+public class DefaultFileLockManager implements FileLockManager {
     private static final Logger LOGGER = Logging.getLogger(DefaultFileLockManager.class);
     private static final int DEFAULT_LOCK_TIMEOUT = 60000;
     private static final byte STATE_REGION_PROTOCOL = 1;
@@ -70,16 +69,13 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
         File canonicalTarget = GFileUtils.canonicalise(target);
 
         try {
-            DefaultFileLock newLock = new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName);
+            int port = fileLockListener.reservePort();
+            DefaultFileLock newLock = new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, port);
             fileLockListener.lockCreated(canonicalTarget, whenContended);
             return newLock;
         } catch (Throwable t) {
             throw UncheckedException.throwAsUncheckedException(t);
         }
-    }
-
-    public void stop() {
-        fileLockListener.stop();
     }
 
     private class OwnerInfo {
@@ -99,8 +95,10 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
         private boolean integrityViolated;
         private boolean contended;
         private boolean busy;
+        private int port;
 
-        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName) throws Throwable {
+        public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, int port) throws Throwable {
+            this.port = port;
             if (mode == LockMode.None) {
                 throw new UnsupportedOperationException("Locking mode None is not supported.");
             }
@@ -276,8 +274,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                     try {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
-                        LOGGER.lifecycle("Writing listen port: {}, listener: {}", fileLockListener.getPort(), fileLockListener);
-                        lockFileAccess.writeInt(fileLockListener.getPort());
+                        lockFileAccess.writeInt(port);
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
                         lockFileAccess.writeUTF(trimIfNecessary(operationDisplayName));
                         lockFileAccess.setLength(lockFileAccess.getFilePointer());

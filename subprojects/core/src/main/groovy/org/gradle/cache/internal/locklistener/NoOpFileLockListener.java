@@ -9,13 +9,11 @@ import java.io.File;
  */
 public class NoOpFileLockListener implements FileLockListener {
 
-    public int getPort() {
-        return -1;
-    }
-
-    public void stop() {}
-
     public void lockCreated(File target, Action<File> whenContended) {}
 
     public void lockClosed(File target) {}
+
+    public int reservePort() {
+        return -1;
+    }
 }
