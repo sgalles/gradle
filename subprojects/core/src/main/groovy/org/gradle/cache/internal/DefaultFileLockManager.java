@@ -27,6 +27,8 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
@@ -44,6 +46,7 @@ public class DefaultFileLockManager implements FileLockManager {
     private static final int INFORMATION_REGION_POS = STATE_REGION_POS + STATE_REGION_SIZE;
     public static final int INFORMATION_REGION_SIZE = 2052;
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
+    private final Set<File> lockedFiles = new CopyOnWriteArraySet<File>();
     private final ProcessMetaDataProvider metaDataProvider;
     private final int lockTimeoutMs;
     private FileLockListener fileLockListener;
@@ -67,13 +70,16 @@ public class DefaultFileLockManager implements FileLockManager {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", mode));
         }
         File canonicalTarget = GFileUtils.canonicalise(target);
-
+        if (!lockedFiles.add(canonicalTarget)) {
+            throw new IllegalStateException(String.format("Cannot lock %s as it has already been locked by this process.", targetDisplayName));
+        }
         try {
             int port = fileLockListener.reservePort();
             DefaultFileLock newLock = new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName, port);
             fileLockListener.lockCreated(canonicalTarget, whenContended);
             return newLock;
         } catch (Throwable t) {
+            lockedFiles.remove(canonicalTarget);
             throw UncheckedException.throwAsUncheckedException(t);
         }
     }
@@ -94,7 +100,7 @@ public class DefaultFileLockManager implements FileLockManager {
         private RandomAccessFile lockFileAccess;
         private boolean integrityViolated;
         private boolean contended;
-        private boolean busy;
+        private boolean busy = true;
         private int port;
 
         public DefaultFileLock(File target, LockMode mode, String displayName, String operationDisplayName, int port) throws Throwable {
@@ -214,6 +220,7 @@ public class DefaultFileLockManager implements FileLockManager {
             }
             try {
                 LOGGER.debug("Releasing lock on {}.", displayName);
+                lockedFiles.remove(target);
                 // Also releases any locks
                 try {
                     if (lock != null && !lock.isShared()) {

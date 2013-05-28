@@ -50,8 +50,8 @@ class ParallelTaskPlanExecutor extends AbstractTaskPlanExecutor {
     public void process(final TaskExecutionPlan taskExecutionPlan, final TaskExecutionListener taskListener) {
         // The main thread holds the lock for the task cache. Need to release the lock while executing the tasks.
         // This locking needs to be pushed down closer to the things that need the lock and removed from here.
-        cacheAccess.longRunningOperation("Executing all tasks", new Factory<Object>() {
-            public Object create() {
+        cacheAccess.longRunningOperation("Executing all tasks", new Runnable() {
+            public void run() {
                 DefaultExecutorFactory factory = new DefaultExecutorFactory();
                 try {
                     doProcess(taskExecutionPlan, taskListener, factory);
@@ -59,7 +59,6 @@ class ParallelTaskPlanExecutor extends AbstractTaskPlanExecutor {
                 } finally {
                     factory.stop();
                 }
-                return null;
             }
         });
     }

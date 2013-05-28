@@ -339,7 +339,7 @@ public class DefaultFileSnapshotterTest extends Specification {
     private FileCollection files(File... files) {
         FileTree collection = Mock(FileTree.class)
         _ * collection.asFileTree >> collection
-        _ * collection.iterator() >> (files as List).iterator()
+        _ * collection.getFiles() >> files
         return collection
     }
     

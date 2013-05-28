@@ -89,7 +89,6 @@ public class DefaultCacheAccess implements CacheAccess {
             if (lockMode.equals(FileLockManager.LockMode.Exclusive)) {
                 lockedFiles.put(lockFile, fileLock);
             }
-            fileLock.setBusy(true);
             takeOwnership(String.format("Access %s", cacheDiplayName));
         } finally {
             lock.unlock();
@@ -118,7 +117,7 @@ public class DefaultCacheAccess implements CacheAccess {
                 }
             } else if (lockedFiles.containsKey(lockFile)){
                 //without this workaround, the artifact cache is never closed
-                //we should look into why we need this
+                //let's find out why we need this
                 closeFileLock(lockedFiles.get(lockFile));
             }
         } finally {
@@ -298,15 +297,11 @@ public class DefaultCacheAccess implements CacheAccess {
             if (!cachedLock.getMode().equals(Exclusive)) {
                 throw new IllegalStateException("FileLock caching is only available for exclusive caches.");
             }
-            if (cachedLock.isBusy()) {
-                throw new IllegalStateException("The lock should be idle!");
-            }
             fileLock = cachedLock;
         } else {
             fileLock = lockManager.lock(lockFile, Exclusive, cacheDiplayName, operationStack.get().getDescription(), whenContended());
             lockedFiles.put(lockFile, fileLock);
         }
-        fileLock.setBusy(true);
         for (MultiProcessSafePersistentIndexedCache<?, ?> cache : caches) {
             cache.onStartWork(operationStack.get().getDescription());
         }
@@ -318,9 +313,6 @@ public class DefaultCacheAccess implements CacheAccess {
             return false;
         }
 
-        if (!fileLock.isBusy()) {
-            throw new IllegalStateException("The lock should be busy!");
-        }
         try {
             if (fileLock.isContended() || fileLock.getMode() == Shared) {
                 closeFileLock(fileLock);
