@@ -137,7 +137,7 @@ public class CacheBackedTaskHistoryRepository implements TaskHistoryRepository {
 
         @Override
         public TaskHistory read(DataInput dataInput) throws Exception {
-            int executions = dataInput.readInt();
+            byte executions = dataInput.readByte();
             TaskHistory history = new TaskHistory();
             LazyTaskExecution.Serializer executionSerializer = new LazyTaskExecution.Serializer(classLoader);
             for (int i = 0; i < executions; i++) {
@@ -150,7 +150,7 @@ public class CacheBackedTaskHistoryRepository implements TaskHistoryRepository {
         @Override
         public void write(DataOutput dataOutput, TaskHistory value) throws IOException {
             int size = value.configurations.size();
-            dataOutput.writeInt(size);
+            dataOutput.writeByte(size);
             LazyTaskExecution.Serializer executionSerializer = new LazyTaskExecution.Serializer(classLoader);
             for (LazyTaskExecution execution : value.configurations) {
                 executionSerializer.write(dataOutput, execution);

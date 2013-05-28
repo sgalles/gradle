@@ -14,12 +14,17 @@ public class FileLockCommunicator {
     private boolean stopped;
 
     public static void pingOwner(int ownerPort, File target) {
+        DatagramSocket datagramSocket = null;
         try {
-            DatagramSocket datagramSocket = new DatagramSocket();
+            datagramSocket = new DatagramSocket();
             byte[] bytesToSend = encodeFile(target);
             datagramSocket.send(new DatagramPacket(bytesToSend, bytesToSend.length, InetAddress.getLocalHost(), ownerPort));
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            if (datagramSocket != null) {
+                datagramSocket.close();
+            }
         }
     }
 
