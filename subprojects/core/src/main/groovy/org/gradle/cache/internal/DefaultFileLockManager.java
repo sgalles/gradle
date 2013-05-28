@@ -47,7 +47,6 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
     private final ProcessMetaDataProvider metaDataProvider;
     private final int lockTimeoutMs;
-    private boolean manageContention;
     private FileLockListener fileLockListener;
 
     public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, FileLockListener fileLockListener) {
@@ -277,7 +276,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                     try {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
-                        lockFileAccess.writeInt(manageContention? fileLockListener.getPort(): -1);
+                        lockFileAccess.writeInt(fileLockListener.getPort());
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
                         lockFileAccess.writeUTF(trimIfNecessary(operationDisplayName));
                         lockFileAccess.setLength(lockFileAccess.getFilePointer());
@@ -315,6 +314,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                         out.port = lockFileAccess.readInt();
                         out.pid = lockFileAccess.readUTF();
                         out.operation = lockFileAccess.readUTF();
+                        LOGGER.debug("Read following information from the file lock info region. Port: {}, owner: {}, operation: {}", out.port, out.pid, out.operation);
                     }
                 } finally {
                     informationRegionLock.release();
@@ -337,10 +337,10 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                     try {
                         OwnerInfo ownerInfo = readInformationRegion(timeout);
                         if (ownerInfo.port != -1) {
-                            LOGGER.debug("The file lock is held by by a different Gradle process. Will attempt to ping owner at port {}", ownerInfo.port);
+                            LOGGER.lifecycle("The file lock is held by by a different Gradle process. Will attempt to ping owner at port {}", ownerInfo.port);
                             FileLockCommunicator.pingOwner(ownerInfo.port, target);
                         } else {
-                            LOGGER.debug("The file lock is held by by a different Gradle process. I was unable to read the port the owner listens for lock access requests.");
+                            LOGGER.lifecycle("The file lock is held by by a different Gradle process. I was unable to read the port the owner listens for lock access requests.");
                         }
                     } catch (Exception e) {
                         throw new RuntimeException(e);
