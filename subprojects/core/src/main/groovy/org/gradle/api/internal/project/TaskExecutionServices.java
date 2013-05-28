@@ -67,7 +67,7 @@ public class TaskExecutionServices extends DefaultServiceRegistry {
         FileSnapshotter fileSnapshotter = new DefaultFileSnapshotter(
                 new CachingHasher(
                         new DefaultHasher(),
-                        cacheAccess));
+                        cacheAccess), cacheAccess);
 
         FileSnapshotter outputFilesSnapshotter = new OutputFilesSnapshotter(fileSnapshotter, new RandomLongIdGenerator(), cacheAccess);
 

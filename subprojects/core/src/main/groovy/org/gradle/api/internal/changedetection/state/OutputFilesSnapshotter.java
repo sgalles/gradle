@@ -58,9 +58,10 @@ public class OutputFilesSnapshotter implements FileSnapshotter {
 
     public OutputFilesSnapshot snapshot(final FileCollection files) {
         final Map<String, Long> snapshotDirIds = new HashMap<String, Long>();
+        final Set<File> theFiles = files.getFiles();
         cacheAccess.useCache("create dir snapshots", new Runnable() {
             public void run() {
-                for (File file : files) {
+                for (File file : theFiles) {
                     Long dirId;
                     if (file.exists()) {
                         dirId = dirIdentiferCache.get(file.getAbsolutePath());

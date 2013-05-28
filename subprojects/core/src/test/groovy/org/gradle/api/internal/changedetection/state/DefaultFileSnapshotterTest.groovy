@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 package org.gradle.api.internal.changedetection.state
+
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.FileTree
 import org.gradle.test.fixtures.file.TestFile
@@ -23,11 +24,19 @@ import org.junit.Rule
 import spock.lang.Specification
 
 public class DefaultFileSnapshotterTest extends Specification {
-    private final Hasher hasher = new DefaultHasher()
-    private final DefaultFileSnapshotter snapshotter = new DefaultFileSnapshotter(hasher)
+    def hasher = new DefaultHasher()
+    def cacheAccess = Stub(TaskArtifactStateCacheAccess)
+    def snapshotter = new DefaultFileSnapshotter(hasher, cacheAccess)
+
     def listener = Mock(ChangeListener)
     @Rule
     public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
+
+    def setup() {
+        cacheAccess.useCache(_, _) >> { args ->
+            args[1].run()
+        }
+    }
 
     def getFilesReturnsOnlyTheFilesWhichExisted() {
         given:

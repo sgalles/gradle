@@ -15,11 +15,11 @@
  */
 package org.gradle.api.internal.changedetection.state;
 
-import org.gradle.internal.Factory;
 import org.gradle.api.internal.TaskInternal;
+import org.gradle.cache.PersistentIndexedCache;
+import org.gradle.internal.Factory;
 import org.gradle.messaging.serialize.DataStreamBackedSerializer;
 import org.gradle.messaging.serialize.DefaultSerializer;
-import org.gradle.cache.PersistentIndexedCache;
 
 import java.io.*;
 import java.util.*;
@@ -84,18 +84,18 @@ public class CacheBackedTaskHistoryRepository implements TaskHistoryRepository {
     }
 
     private TaskHistory loadHistory(final TaskInternal task) {
-        ClassLoader original = serializer.getClassLoader();
-        serializer.setClassLoader(task.getClass().getClassLoader());
-        try {
-            TaskHistory history = cacheAccess.useCache("Load history", new Factory<TaskHistory>() {
-                public TaskHistory create() {
-                    return taskHistoryCache.get(task.getPath());
+        return cacheAccess.useCache("Load history", new Factory<TaskHistory>() {
+            public TaskHistory create() {
+                ClassLoader original = serializer.getClassLoader();
+                serializer.setClassLoader(task.getClass().getClassLoader());
+                try {
+                    TaskHistory history = taskHistoryCache.get(task.getPath());
+                    return history == null ? new TaskHistory() : history;
+                } finally {
+                    serializer.setClassLoader(original);
                 }
-            });
-            return history == null ? new TaskHistory() : history;
-        } finally {
-            serializer.setClassLoader(original);
-        }
+            }
+        });
     }
 
     private static Set<String> outputFiles(TaskInternal task) {
