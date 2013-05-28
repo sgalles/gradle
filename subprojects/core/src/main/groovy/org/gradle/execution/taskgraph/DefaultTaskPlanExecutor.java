@@ -18,7 +18,6 @@ package org.gradle.execution.taskgraph;
 
 import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
-import org.gradle.internal.Factory;
 
 class DefaultTaskPlanExecutor extends AbstractTaskPlanExecutor {
     private final TaskArtifactStateCacheAccess stateCacheAccess;

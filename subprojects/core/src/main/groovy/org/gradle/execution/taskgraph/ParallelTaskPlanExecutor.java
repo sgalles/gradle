@@ -22,7 +22,6 @@ import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.internal.Factory;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.concurrent.StoppableExecutor;
