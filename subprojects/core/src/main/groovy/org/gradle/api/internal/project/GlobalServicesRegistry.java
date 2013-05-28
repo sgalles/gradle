@@ -75,6 +75,10 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
         return new DefaultPluginModuleRegistry(get(ModuleRegistry.class));
     }
 
+    protected Factory<CacheFactory> createCacheFactory() {
+        return new DefaultCacheFactory(get(FileLockManager.class));
+    }
+
     protected ClassLoaderRegistry createClassLoaderRegistry() {
         return new DefaultClassLoaderRegistry(get(ClassPathRegistry.class), get(ClassLoaderFactory.class));
     }
@@ -101,5 +105,9 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
 
     protected Instantiator createInstantiator() {
         return new ClassGeneratorBackedInstantiator(get(ClassGenerator.class), new DirectInstantiator());
+    }
+
+    protected FileLockManager createFileLockManager() {
+        return new DefaultFileLockManager(new DefaultProcessMetaDataProvider(get(ProcessEnvironment.class)));
     }
 }
