@@ -276,6 +276,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
                     try {
                         lockFileAccess.seek(INFORMATION_REGION_POS);
                         lockFileAccess.writeByte(INFORMATION_REGION_PROTOCOL);
+                        LOGGER.lifecycle("Writing listen port: {}, listener: {}", fileLockListener.getPort(), fileLockListener);
                         lockFileAccess.writeInt(fileLockListener.getPort());
                         lockFileAccess.writeUTF(trimIfNecessary(metaDataProvider.getProcessIdentifier()));
                         lockFileAccess.writeUTF(trimIfNecessary(operationDisplayName));

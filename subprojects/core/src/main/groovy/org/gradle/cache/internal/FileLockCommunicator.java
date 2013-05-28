@@ -13,14 +13,6 @@ public class FileLockCommunicator {
     private DatagramSocket socket;
     private boolean stopped;
 
-    public FileLockCommunicator() {
-        try {
-            socket = new DatagramSocket();
-        } catch (SocketException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public static void pingOwner(int ownerPort, File target) {
         try {
             DatagramSocket datagramSocket = new DatagramSocket();
@@ -69,5 +61,13 @@ public class FileLockCommunicator {
 
     public int getPort() {
         return socket.getLocalPort();
+    }
+
+    public void start() {
+        try {
+            socket = new DatagramSocket();
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

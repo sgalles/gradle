@@ -80,6 +80,7 @@ public class DefaultFileLockListener implements FileLockListener {
             contendedActions.put(target, whenContended);
             if (listener == null) {
                 listener = newListener();
+                communicator.start();
                 new Thread(listener).start();
             }
         } finally {

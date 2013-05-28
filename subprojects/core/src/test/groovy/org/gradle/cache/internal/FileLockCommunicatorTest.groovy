@@ -9,13 +9,30 @@ import static org.gradle.test.fixtures.ConcurrentTestUtil.poll
  */
 class FileLockCommunicatorTest extends ConcurrentSpecification {
 
-    def communicator
+    def communicator = new FileLockCommunicator()
     File receivedFile
     File actualFile = new File("foo")
 
+    def "port after starting"() {
+        when:
+        communicator.start()
+
+        then:
+        communicator.getPort() != -1
+    }
+
+    def "port after stopping"() {
+        when:
+        communicator.start()
+        communicator.stop()
+
+        then:
+        communicator.getPort() == -1
+    }
+
     def "can receive file"() {
         start {
-            communicator = new FileLockCommunicator()
+            communicator.start()
             receivedFile = communicator.receive()
         }
 
@@ -34,7 +51,7 @@ class FileLockCommunicatorTest extends ConcurrentSpecification {
 
     def "can be stopped"() {
         start {
-            communicator = new FileLockCommunicator()
+            communicator.start()
             communicator.receive()
         }
 
