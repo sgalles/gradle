@@ -18,6 +18,7 @@ package org.gradle.cache.internal;
 import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.cache.internal.locklistener.FileLockListener;
 import org.gradle.internal.Factory;
 import org.gradle.internal.Stoppable;
 import org.gradle.internal.UncheckedException;
@@ -27,10 +28,6 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Uses file system locks on a lock file per target file. Each lock file is made up of 2 regions:
@@ -53,17 +50,14 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
     private boolean manageContention;
     private FileLockListener fileLockListener;
 
-    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, boolean manageContention) {
-        this(metaDataProvider, DEFAULT_LOCK_TIMEOUT, manageContention);
+    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, FileLockListener fileLockListener) {
+        this(metaDataProvider, DEFAULT_LOCK_TIMEOUT, fileLockListener);
     }
 
-    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, int lockTimeoutMs, boolean manageContention) {
+    public DefaultFileLockManager(ProcessMetaDataProvider metaDataProvider, int lockTimeoutMs, FileLockListener fileLockListener) {
         this.metaDataProvider = metaDataProvider;
         this.lockTimeoutMs = lockTimeoutMs;
-        this.manageContention = manageContention;
-        if (manageContention) {
-            fileLockListener = new FileLockListener();
-        }
+        this.fileLockListener = fileLockListener;
     }
 
     public FileLock lock(File target, LockMode mode, String targetDisplayName, Action<File> whenContended) throws LockTimeoutException {
@@ -78,7 +72,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
 
         try {
             DefaultFileLock newLock = new DefaultFileLock(canonicalTarget, mode, targetDisplayName, operationDisplayName);
-            fileLockListener.lockCreated(newLock, whenContended);
+            fileLockListener.lockCreated(canonicalTarget, whenContended);
             return newLock;
         } catch (Throwable t) {
             throw UncheckedException.throwAsUncheckedException(t);
@@ -87,97 +81,6 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
 
     public void stop() {
         fileLockListener.stop();
-    }
-
-    class FileLockListener {
-        private final Lock lock = new ReentrantLock();
-        private final Map<File, Action<File>> contendedActions = new HashMap();
-        private FileLockCommunicator communicator = new FileLockCommunicator();
-        private boolean stopped;
-
-        private Runnable listener;
-
-        private Runnable newListener() {
-            return new Runnable() {
-                public void run() {
-                    try {
-                        LOGGER.lifecycle("Starting file lock listener thread.");
-                        doRun();
-                    } catch (Throwable t) {
-                        LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
-                    } finally {
-                        LOGGER.lifecycle("File lock listener thread completed.");
-                    }
-                }
-
-                private void doRun() {
-                    while(!stopped) {
-                        File requestedFileLock = communicator.receive();
-                        lock.lock();
-                        try {
-                            if (stopped || contendedActions.isEmpty()) {
-                                return;
-                            }
-                            Action<File> action = contendedActions.get(requestedFileLock);
-                            if (action != null) {
-                                action.execute(requestedFileLock);
-                            }
-                        } finally {
-                            lock.unlock();
-                        }
-                    }
-                }
-            };
-        }
-
-        public int getPort() {
-            return communicator.getPort();
-        }
-
-        public void stop() {
-            lock.lock();
-            try {
-                stopped = true;
-                contendedActions.clear();
-                communicator.stop();
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        public void lockCreated(DefaultFileLock newLock, Action<File> whenContended) {
-            lock.lock();
-            try {
-                if (stopped) {
-                    throw new IllegalStateException("The listener was already stopped!");
-                }
-                contendedActions.put(newLock.target, whenContended);
-                if (listener == null) {
-                    listener = newListener();
-                    new Thread(listener).start();
-                }
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        public void lockClosed(DefaultFileLock closedLock) {
-            lock.lock();
-            try {
-                if (stopped) {
-                    throw new IllegalStateException("The listener was already stopped!");
-                }
-                if (listener == null) {
-                    throw new IllegalStateException("Lock creation event was not received first!");
-                }
-                contendedActions.remove(closedLock.target);
-                if (contendedActions.isEmpty()) {
-                    communicator.stop();
-                }
-            } finally {
-                lock.unlock();
-            }
-        }
     }
 
     private class OwnerInfo {
@@ -328,7 +231,7 @@ public class DefaultFileLockManager implements FileLockManager, Stoppable {
             } finally {
                 lock = null;
                 lockFileAccess = null;
-                fileLockListener.lockClosed(this);
+                fileLockListener.lockClosed(target);
             }
         }
 

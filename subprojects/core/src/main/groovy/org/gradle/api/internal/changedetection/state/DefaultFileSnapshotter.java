@@ -17,6 +17,7 @@
 package org.gradle.api.internal.changedetection.state;
 
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.FileTree;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.util.ChangeListener;
 import org.gradle.util.NoOpChangeListener;
@@ -38,7 +39,8 @@ public class DefaultFileSnapshotter implements FileSnapshotter {
 
     public FileCollectionSnapshot snapshot(FileCollection sourceFiles) {
         Map<String, FileSnapshot> snapshots = new HashMap<String, FileSnapshot>();
-        for (File file : sourceFiles.getAsFileTree()) {
+        FileTree fileTree = sourceFiles.getAsFileTree();
+        for (File file : fileTree) {
             if (file.isFile()) {
                 snapshots.put(file.getAbsolutePath(), new FileHashSnapshot(hasher.hash(file)));
             } else if (file.isDirectory()) {
