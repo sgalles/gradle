@@ -13,6 +13,10 @@ class FileLockCommunicatorTest extends ConcurrentSpecification {
     File receivedFile
     File actualFile = new File("foo")
 
+    def cleanup() {
+        communicator.stop()
+    }
+
     def "port after starting"() {
         when:
         communicator.start()

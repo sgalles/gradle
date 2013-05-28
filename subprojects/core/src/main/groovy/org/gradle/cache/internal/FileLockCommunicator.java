@@ -30,7 +30,7 @@ public class FileLockCommunicator {
 
     public File receive() {
         try {
-            byte[] bytes = new byte[1024];
+            byte[] bytes = new byte[2048];
             DatagramPacket packet = new DatagramPacket(bytes, bytes.length);
             socket.receive(packet);
             return decodeFile(bytes);
@@ -53,18 +53,13 @@ public class FileLockCommunicator {
     private static byte[] encodeFile(File target) throws IOException {
         ByteArrayOutputStream packet = new ByteArrayOutputStream();
         DataOutputStream data = new DataOutputStream(packet);
-        byte[] bytes = target.getAbsolutePath().getBytes();
-        data.writeInt(bytes.length);
-        data.write(bytes);
+        data.writeUTF(target.getAbsolutePath());
         return packet.toByteArray();
     }
 
     private static File decodeFile(byte[] bytes) throws IOException {
         DataInputStream data = new DataInputStream(new ByteArrayInputStream(bytes));
-        int size = data.readInt();
-        byte[] fileName = new byte[size];
-        data.readFully(fileName);
-        return new File(new String(fileName));
+        return new File(data.readUTF());
     }
 
     public int getPort() {

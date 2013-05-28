@@ -27,17 +27,10 @@ public class DefaultFileLockListener implements FileLockListener {
             try {
                 LOGGER.lifecycle("Starting file lock listener thread.");
                 doRun();
-                assertState();
             } catch (Throwable t) {
                 LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
             } finally {
                 LOGGER.lifecycle("File lock listener thread completed.");
-            }
-        }
-
-        private void assertState() {
-            if (communicator.getPort() != -1) {
-                throw new IllegalStateException("Socket was not closed correctly!");
             }
         }
 
