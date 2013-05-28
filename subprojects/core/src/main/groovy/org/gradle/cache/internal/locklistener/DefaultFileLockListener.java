@@ -25,12 +25,12 @@ public class DefaultFileLockListener implements FileLockListener {
     private Runnable listener() { return new Runnable() {
         public void run() {
             try {
-                LOGGER.lifecycle("Starting file lock listener thread.");
+                LOGGER.info("Starting file lock listener thread.");
                 doRun();
             } catch (Throwable t) {
-                LOGGER.lifecycle("Problems handling incoming cache access requests.", t);
+                LOGGER.error("Problems handling incoming cache access requests.", t);
             } finally {
-                LOGGER.lifecycle("File lock listener thread completed.");
+                LOGGER.info("File lock listener thread completed.");
             }
         }
 
@@ -57,7 +57,6 @@ public class DefaultFileLockListener implements FileLockListener {
         lock.lock();
         try {
             if (contendedActions.isEmpty()) {
-                LOGGER.lifecycle("Starting communicator because first cache opens {}", target);
                 communicator.start();
                 executor = new DefaultExecutorFactory().create("Listen for file lock access requests from other processes");
                 executor.execute(listener());
@@ -73,7 +72,6 @@ public class DefaultFileLockListener implements FileLockListener {
         try {
             contendedActions.remove(target);
             if (contendedActions.isEmpty()) {
-                LOGGER.lifecycle("Stopping receiver, last cache is being closed {}", target);
                 communicator.stop();
                 executor.requestStop();
             }

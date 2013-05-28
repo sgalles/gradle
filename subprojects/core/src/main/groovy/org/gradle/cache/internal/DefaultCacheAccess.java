@@ -123,7 +123,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             }
         } finally {
             if (cacheClosedCount != 1) {
-                LOG.lifecycle("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
+                LOG.info("Cache {} was closed {} times.", cacheDiplayName, cacheClosedCount);
             }
             lock.unlock();
         }
@@ -428,7 +428,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
                         return;
                     }
                     if (!lock.isContended()) {
-                        LOG.lifecycle("Other process requested access to {}, busy: {}.", lockTarget, lock.isBusy());
+                        LOG.info("Other process requested access to {} [busy: {}].", lockTarget, lock.isBusy());
                         lock.setContended(true);
                         if (!lock.isBusy()) {
                             lockedFiles.remove(lockTarget);

@@ -335,10 +335,10 @@ public class DefaultFileLockManager implements FileLockManager {
                     try {
                         OwnerInfo ownerInfo = readInformationRegion(timeout);
                         if (ownerInfo.port != -1) {
-                            LOGGER.lifecycle("The file lock is held by by a different Gradle process. Will attempt to ping owner at port {}", ownerInfo.port);
+                            LOGGER.info("The file lock is held by a different Gradle process. Will attempt to ping owner at port {}", ownerInfo.port);
                             FileLockCommunicator.pingOwner(ownerInfo.port, target);
                         } else {
-                            LOGGER.lifecycle("The file lock is held by by a different Gradle process. I was unable to read the port the owner listens for lock access requests.");
+                            LOGGER.info("The file lock is held by a different Gradle process. I was unable to read on which port the owner listens for lock access requests.");
                         }
                     } catch (Exception e) {
                         throw new RuntimeException(e);
