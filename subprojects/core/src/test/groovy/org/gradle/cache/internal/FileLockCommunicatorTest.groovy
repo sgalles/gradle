@@ -1,8 +1,6 @@
 package org.gradle.cache.internal
 
-import org.gradle.test.fixtures.ConcurrentTestUtil
 import org.gradle.util.ConcurrentSpecification
-import spock.lang.Specification
 
 import static org.gradle.test.fixtures.ConcurrentTestUtil.poll
 
@@ -11,13 +9,13 @@ import static org.gradle.test.fixtures.ConcurrentTestUtil.poll
  */
 class FileLockCommunicatorTest extends ConcurrentSpecification {
 
-    def communicator = new FileLockCommunicator()
+    def communicator
     File receivedFile
     File actualFile = new File("foo")
 
     def "can receive file"() {
         start {
-            communicator.start()
+            communicator = new FileLockCommunicator()
             receivedFile = communicator.receive()
         }
 
@@ -36,7 +34,7 @@ class FileLockCommunicatorTest extends ConcurrentSpecification {
 
     def "can be stopped"() {
         start {
-            communicator.start()
+            communicator = new FileLockCommunicator()
             communicator.receive()
         }
 

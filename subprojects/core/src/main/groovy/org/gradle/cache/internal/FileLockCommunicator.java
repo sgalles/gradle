@@ -13,20 +13,20 @@ public class FileLockCommunicator {
     private DatagramSocket socket;
     private boolean stopped;
 
+    public FileLockCommunicator() {
+        try {
+            socket = new DatagramSocket();
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void pingOwner(int ownerPort, File target) {
         try {
             DatagramSocket datagramSocket = new DatagramSocket();
             byte[] bytesToSend = encodeFile(target);
             datagramSocket.send(new DatagramPacket(bytesToSend, bytesToSend.length, InetAddress.getLocalHost(), ownerPort));
         } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void start() {
-        try {
-            socket = new DatagramSocket();
-        } catch (SocketException e) {
             throw new RuntimeException(e);
         }
     }

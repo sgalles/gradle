@@ -108,6 +108,6 @@ public class GlobalServicesRegistry extends DefaultServiceRegistry {
     }
 
     protected FileLockManager createFileLockManager() {
-        return new DefaultFileLockManager(new DefaultProcessMetaDataProvider(get(ProcessEnvironment.class)));
+        return new DefaultFileLockManager(new DefaultProcessMetaDataProvider(get(ProcessEnvironment.class)), true);
     }
 }

@@ -21,15 +21,12 @@ import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.cache.CacheAccess;
-import org.gradle.internal.Stoppable;
-import org.gradle.internal.concurrent.DefaultExecutorFactory;
-import org.gradle.internal.concurrent.StoppableExecutor;
-import org.gradle.messaging.serialize.DefaultSerializer;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.cache.internal.btree.BTreePersistentIndexedCache;
 import org.gradle.internal.Factories;
 import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
+import org.gradle.messaging.serialize.DefaultSerializer;
 import org.gradle.messaging.serialize.Serializer;
 
 import java.io.File;
@@ -119,6 +116,10 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
                 } finally {
                     fileLock = null;
                 }
+            } else if (lockedFiles.containsKey(lockFile)){
+                //without this workaround, the artifact cache is never closed
+                //we should look into why we need this
+                closeFileLock(lockedFiles.get(lockFile));
             }
         } finally {
             if (cacheClosedCount != 1) {
