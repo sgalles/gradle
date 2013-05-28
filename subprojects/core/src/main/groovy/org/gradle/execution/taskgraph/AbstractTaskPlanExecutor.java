@@ -21,7 +21,6 @@ import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.changedetection.state.TaskArtifactStateCacheAccess;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.internal.Factory;
 
 import static org.gradle.util.Clock.prettyTime;
 

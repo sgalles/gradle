@@ -39,7 +39,7 @@ import static org.gradle.cache.internal.FileLockManager.LockMode.Exclusive;
 import static org.gradle.cache.internal.FileLockManager.LockMode.Shared;
 
 @ThreadSafe
-public class DefaultCacheAccess implements CacheAccess, ThreadLock {
+public class DefaultCacheAccess implements CacheAccess {
 
     private final static Logger LOG = Logging.getLogger(DefaultCacheAccess.class);
 
@@ -60,7 +60,7 @@ public class DefaultCacheAccess implements CacheAccess, ThreadLock {
             return new CacheOperationStack();
         }
     };
-    private int cacheClosedCount = 0;
+    private int cacheClosedCount;
 
     public DefaultCacheAccess(String cacheDisplayName, File lockFile, FileLockManager lockManager) {
         this.cacheDiplayName = cacheDisplayName;

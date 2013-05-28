@@ -16,7 +16,6 @@
 package org.gradle.cache.internal;
 
 import org.gradle.api.Action;
-import org.gradle.internal.Stoppable;
 
 import java.io.File;
 
