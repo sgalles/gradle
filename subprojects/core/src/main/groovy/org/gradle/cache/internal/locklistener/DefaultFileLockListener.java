@@ -37,7 +37,7 @@ public class DefaultFileLockListener implements FileLockListener {
 
         private void assertState() {
             if (communicator.getPort() != -1) {
-                throw new IllegalStateException("Socket not closed!");
+                throw new IllegalStateException("Socket was not closed correctly!");
             }
         }
 
@@ -45,13 +45,14 @@ public class DefaultFileLockListener implements FileLockListener {
             File requestedFileLock;
             while((requestedFileLock = communicator.receive()) != null) {
                 lock.lock();
+                Action<File> action;
                 try {
-                    Action<File> action = contendedActions.get(requestedFileLock);
-                    if (action != null) {
-                        action.execute(requestedFileLock);
-                    }
+                    action = contendedActions.get(requestedFileLock);
                 } finally {
                     lock.unlock();
+                }
+                if (action != null) {
+                    action.execute(requestedFileLock);
                 }
             }
         }
@@ -81,7 +82,7 @@ public class DefaultFileLockListener implements FileLockListener {
             if (contendedActions.isEmpty()) {
                 LOGGER.lifecycle("Stopping receiver, last cache is being closed {}", target);
                 communicator.stop();
-                executor.stop();
+                executor.requestStop();
             }
         } finally {
             lock.unlock();
@@ -91,7 +92,7 @@ public class DefaultFileLockListener implements FileLockListener {
     public int reservePort() {
         lock.lock();
         try {
-            if (!communicator.wasStarted()) {
+            if (!communicator.isStarted()) {
                 communicator.start();
             }
             return communicator.getPort();

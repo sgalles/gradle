@@ -74,7 +74,7 @@ public class FileLockCommunicator {
         }
     }
 
-    public boolean wasStarted() {
+    public boolean isStarted() {
         return socket != null;
     }
 }
