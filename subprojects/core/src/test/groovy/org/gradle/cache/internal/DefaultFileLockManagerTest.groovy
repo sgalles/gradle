@@ -455,7 +455,7 @@ class DefaultFileLockManagerTest extends Specification {
         lockFile.withDataInputStream { str ->
             assert str.readByte() == 1
             assert !str.readBoolean()
-            assert str.readByte() == 2
+            assert str.readByte() == 3
             assert str.readInt() == -1
             assert str.readUTF() == processIdentifier
             assert str.readUTF() == operationalName

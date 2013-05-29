@@ -42,7 +42,7 @@ public class DefaultFileLockManager implements FileLockManager {
     private static final byte STATE_REGION_PROTOCOL = 1;
     private static final int STATE_REGION_SIZE = 2;
     private static final int STATE_REGION_POS = 0;
-    private static final byte INFORMATION_REGION_PROTOCOL = 2;
+    private static final byte INFORMATION_REGION_PROTOCOL = 3;
     private static final int INFORMATION_REGION_POS = STATE_REGION_POS + STATE_REGION_SIZE;
     public static final int INFORMATION_REGION_SIZE = 2052;
     public static final int INFORMATION_REGION_DESCR_CHUNK_LIMIT = 340;
