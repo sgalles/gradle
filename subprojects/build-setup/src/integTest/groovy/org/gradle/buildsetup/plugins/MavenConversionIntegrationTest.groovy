@@ -157,19 +157,31 @@ it.exclude group: '*', module: 'badArtifact'
     }
 
     def "providedNotWar"() {
-      when:
-      run 'setupBuild'
+        when:
+        run 'setupBuild'
 
-      then:
-      settingsFile.exists()
-      buildFile.exists()
-      wrapperFilesGenerated()
+        then:
+        settingsFile.exists()
+        buildFile.exists()
+        wrapperFilesGenerated()
 
-      when:
-      run 'clean', 'build'
+        when:
+        run 'clean', 'build'
 
-      then:
-      file("build/libs/myThing-0.0.1-SNAPSHOT.jar").exists()
+        then:
+        file("build/libs/myThing-0.0.1-SNAPSHOT.jar").exists()
+    }
+
+    def "provides decent error message when POM is invalid"() {
+        setup:
+        def pom = file("pom.xml")
+        pom << "<project>someInvalid pom content</project>"
+
+        when:
+        fails 'setupBuild'
+
+        then:
+        failure.assertHasCause("Could not convert Maven POM $pom to a Gradle build.")
     }
 
     void wrapperFilesGenerated(TestFile parentFolder = file(".")) {

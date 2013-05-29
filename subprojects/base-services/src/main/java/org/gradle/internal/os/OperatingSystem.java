@@ -82,6 +82,8 @@ public abstract class OperatingSystem {
 
     public abstract String getSharedLibraryName(String libraryName);
 
+    public abstract String getStaticLibraryName(String libraryName);
+
     /**
      * Locates the given executable in the system path. Returns null if not found.
      */
@@ -137,10 +139,7 @@ public abstract class OperatingSystem {
 
         @Override
         public String getScriptName(String scriptPath) {
-            if (scriptPath.toLowerCase().endsWith(".bat")) {
-                return scriptPath;
-            }
-            return scriptPath + ".bat";
+            return withSuffix(scriptPath, ".bat");
         }
 
         @Override
@@ -151,6 +150,11 @@ public abstract class OperatingSystem {
         @Override
         public String getSharedLibraryName(String libraryPath) {
             return withSuffix(libraryPath, ".dll");
+        }
+
+        @Override
+        public String getStaticLibraryName(String libraryName) {
+            return withSuffix(libraryName, ".a");
         }
 
         @Override
@@ -197,6 +201,11 @@ public abstract class OperatingSystem {
 
         protected String getSharedLibSuffix() {
             return ".so";
+        }
+
+        @Override
+        public String getStaticLibraryName(String libraryName) {
+            return libraryName.endsWith(".a") ? libraryName : libraryName + ".a";
         }
 
         @Override

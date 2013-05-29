@@ -104,6 +104,19 @@ To declare the project type you have to specify a `--type` command line argument
 
     gradle setupBuild --type java-library
 
+
+### Added option to deal with duplicate files in archives and copy operations
+
+When copying files with duplicate relative paths in the target archive (or directory), you can now specify the strategy for dealing with these duplicate files by
+using `FileCopyDetails`.
+
+    task zip(type: Zip) {
+        from 'dir1'
+        from 'dir2'
+        archiveName = 'MyZip.zip'
+        eachFile { it.duplicatesStrategy = 'exclude' }
+    }
+
 ## Promoted features
 
 Promoted features are features that were incubating in previous versions of Gradle but are now supported and subject to backwards compatibility.
@@ -152,7 +165,7 @@ which has now the type`SetupBuild` task.
 ### Major changes to C++ support
 
 The incubating C++ support in Gradle is undergoing a major update, in order to add support for Static Libraries, variants and other good features. As such,
-the tasks, API and DSL is being given an overhaul. While some features may remain the same, it's likely that any existing C++ builds will need to be updated
+the tasks, API and DSL are being given an overhaul. While some features may remain the same, it's likely that any existing C++ builds will need to be updated
 for the changes. You can read about the plan for proposed changes at https://github.com/gradle/gradle/blob/master/design-docs/continuous-delivery-for-c-plus-plus.md.
 
 ### `ConfigureableReport` renamed to `ConfigurableReport`
@@ -165,6 +178,7 @@ We would like to thank the following community members for making contributions 
 
 * [Dan Stine](https://github.com/dstine) - Added maxPriorityViolations settings to the CodeNarc plugin (GRADLE-1742).
 * [Olaf Klischat](https://github.com/multi-io) - Added defaultJvmOpts property Application plugin (GRADLE-1456).
+* [Kyle Mahan](https://github.com/kylewm) - Introduce duplicateStrategy property to archive and copy operations (GRADLE-2171).
 
 We love getting contributions from the Gradle community. For information on contributing, please see [gradle.org/contribute](http://gradle.org/contribute).
 

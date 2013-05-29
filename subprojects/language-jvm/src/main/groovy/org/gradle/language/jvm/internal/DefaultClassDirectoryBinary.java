@@ -19,11 +19,10 @@ import org.gradle.api.DomainObjectCollection;
 import org.gradle.api.Nullable;
 import org.gradle.api.Task;
 import org.gradle.api.internal.DefaultDomainObjectSet;
-import org.gradle.api.tasks.Copy;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.language.base.LanguageSourceSet;
+import org.gradle.language.base.internal.TaskNamerForBinaries;
 import org.gradle.language.jvm.ClassDirectoryBinary;
-import org.gradle.util.GUtil;
 
 import java.io.File;
 
@@ -34,7 +33,6 @@ public class DefaultClassDirectoryBinary implements ClassDirectoryBinary {
     private File resourcesDir;
     private final DomainObjectCollection<LanguageSourceSet> source = new DefaultDomainObjectSet<LanguageSourceSet>(LanguageSourceSet.class);
     private Task classesTask;
-    private Copy resourcesTask;
 
     public DefaultClassDirectoryBinary(String name) {
         this.name = name;
@@ -84,33 +82,12 @@ public class DefaultClassDirectoryBinary implements ClassDirectoryBinary {
         this.classesTask = classesTask;
     }
 
-    @Nullable
-    public Copy getResourcesTask() {
-        return resourcesTask;
-    }
-
-    public void setResourcesTask(Copy resourcesTask) {
-        this.resourcesTask = resourcesTask;
-    }
-
     public String getTaskName(@Nullable String verb, @Nullable String target) {
-        if (verb == null && target == null) {
-            return GUtil.toLowerCamelCase(baseName);
-        }
-        if (verb == null) {
-            return GUtil.toLowerCamelCase(String.format("%s %s", getTaskBaseName(), target));
-        }
-        if (target == null) {
-            return GUtil.toLowerCamelCase(String.format("%s %s", verb, baseName));
-        }
-        return GUtil.toLowerCamelCase(String.format("%s %s %s", verb, getTaskBaseName(), target));
-    }
-
-    public String getTaskBaseName() {
-        return baseName.equals("main") ? "" : baseName;
+        String shortName = baseName.equals("main") ? "" : baseName;
+        return new TaskNamerForBinaries(baseName, shortName).getTaskName(verb, target);
     }
 
     public String toString() {
-        return String.format("binary '%s'", getName());
+        return String.format("classes '%s'", baseName);
     }
 }
