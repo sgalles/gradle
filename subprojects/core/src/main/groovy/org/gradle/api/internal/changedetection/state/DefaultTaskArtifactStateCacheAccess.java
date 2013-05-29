@@ -30,7 +30,6 @@ public class DefaultTaskArtifactStateCacheAccess implements TaskArtifactStateCac
     private final Gradle gradle;
     private final CacheRepository cacheRepository;
     private PersistentCache cache;
-    private final Object lock = new Object();
 
     public DefaultTaskArtifactStateCacheAccess(Gradle gradle, CacheRepository cacheRepository) {
         this.gradle = gradle;
@@ -38,17 +37,15 @@ public class DefaultTaskArtifactStateCacheAccess implements TaskArtifactStateCac
     }
 
     private PersistentCache getCache() {
-        synchronized (lock) {
-            if (cache == null) {
-                cache = cacheRepository
-                        .cache("taskArtifacts")
-                        .forObject(gradle)
-                        .withDisplayName("task artifact state cache")
-                        .withLockMode(FileLockManager.LockMode.Exclusive)
-                        .open();
-            }
-            return cache;
+        if (cache == null) {
+            cache = cacheRepository
+                    .cache("taskArtifacts")
+                    .forObject(gradle)
+                    .withDisplayName("task artifact state cache")
+                    .withLockMode(FileLockManager.LockMode.Exclusive)
+                    .open();
         }
+        return cache;
     }
 
     public <K, V> PersistentIndexedCache<K, V> createCache(final String cacheName, final Class<K> keyType, final Class<V> valueType, final Serializer<V> valueSerializer) {
