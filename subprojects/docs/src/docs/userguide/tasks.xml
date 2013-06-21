@@ -335,6 +335,58 @@
                 for next time the task is executed.
             </para>
         </section>
+		<section>
+            <title>Chaining task's outputs to an other task's inputs</title>
+			<section>
+				<title>Chaining with task name</title>
+				<para>
+					It is very common to have to chain the outputs of a task to the inputs of an other taks. Gradle have
+					a dedicated syntax for this situation, just use a task itself as the input of an other task.
+				</para>
+				<sample id="chainTask" dir="userguide/tasks/incrementalBuild/chainInputsAndOutputs" title="Chaining tasks outputs to an other task inputs">
+					<sourcefile file="build.gradle"/>
+					<output args="transform" ignoreExtraLines="true"/>
+					<output args="transform" outputFile="chainTaskTwice.out" ignoreExtraLines="true"/>
+				</sample>
+				<para>
+					In the previous example, the first task, that creates a text file, is directly used as the input of the
+					second task that computes a checksum of this file. 
+				</para>
+				<para>
+					This has two effects 
+				</para>			
+				<itemizedlist>
+					<listitem>The output file of the first task becomes the input file of the second task.</listitem>
+					<listitem>The first task is automatically added as a dependency of the second task.</listitem>
+				</itemizedlist>
+				<para>
+					This works because The second task's <apilink class="org.gradle.api.tasks.TaskInputs"/> evaluates the first task as the
+						<apilink class="org.gradle.api.file.FileCollection"/> of its output, and a <apilink class="org.gradle.api.file.FileCollection"/> is
+						also a <apilink class="org.gradle.api.Buildable"/> that allows the <apilink class="org.gradle.api.tasks.TaskInputs"/> to add the first task as a dependency of the
+						second task. 
+				</para>
+			</section>	
+			<section>
+				<title>Chaining with <literal>builtBy</literal></title>
+				<para>
+					we sometimes must chain only a part of the outputs of a previous task, and
+					the <apilink class="org.gradle.api.Project" method="file(java.lang.Object)"/> can
+					be used to inject a specific file in the second task's inputs, but the originating
+					task automatic dependency is lost in this case.
+				</para>
+				<para>
+					We might add a <literal>dependsOn</literal> to the second task to get
+					the right task dependency, but the link between the inputs and the manual task dependency
+					is not clear. It is better to use the <apilink class="org.gradle.api.file.ConfigurableFileCollection" 
+					method="setBuiltBy"/> method that can be used to recreate the link between the file
+					and the task that creates it. For instance, the inputs of the checksumGreetings task
+					could also be re-written with
+				</para>
+				<sample id="chainTaskWithBuiltBy" dir="userguide/tasks/incrementalBuild/chainInputsWithBuiltBy" title="Chaining to a task's inputs with builtBy">
+					<sourcefile file="build.gradle" snippet="declare-inputs-and-outputs"/>
+				</sample>
+			</section>	
+       	</section>	
     </section>
 
     <section>

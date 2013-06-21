@@ -1,0 +1,22 @@
+task createGreetings{
+	ext.destFile = file("$buildDir/generated/greetings.txt")
+	outputs.file destFile
+	doLast {
+		destFile.parentFile.mkdirs()
+		destFile.write("Hello ${System.properties['user.name']} !!!")
+	}
+}
+
+// START SNIPPET declare-inputs-and-outputs
+task checksumGreetings{
+	ext.srcFile = files("$buildDir/generated/greetings.txt") { builtBy 'createGreetings' }
+	ext.checksumFile = file("$buildDir/generated/greetings.txt.MD5")
+	inputs.file srcFile
+	outputs.file checksumFile
+	doLast {
+		ant.checksum file: inputs.files.singleFile
+	}
+}
+// END SNIPPET declare-inputs-and-outputs
+
+

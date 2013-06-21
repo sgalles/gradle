@@ -1,0 +1,18 @@
+task createGreetings{
+	ext.destFile = file("$buildDir/generated/greetings.txt")
+	outputs.file destFile
+	doLast {
+		destFile.parentFile.mkdirs()
+		destFile.write("Hello ${System.properties['user.name']} !!!")
+	}
+}
+
+task checksumGreetings{
+	ext.checksumFile = file("$buildDir/generated/greetings.txt.MD5")
+	inputs.file createGreetings // chain 
+	outputs.file checksumFile
+	doLast {
+		ant.checksum file: inputs.files.singleFile
+	}
+}
+
